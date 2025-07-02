@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords } = useAttendanceStore();
-  const { isScanning, startScanning, stopScanning } = useBeacon();
+  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
   const { colors } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
@@ -124,7 +124,7 @@ export default function HomeScreen() {
             </View>
           </View>
           
-          <BeaconStatus />
+          <BeaconStatus beaconErrorReason={beaconErrorReason} />
           
           <AttendanceStats 
             totalClasses={totalClasses}

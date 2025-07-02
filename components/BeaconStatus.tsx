@@ -5,7 +5,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { Feather } from '@expo/vector-icons';
 import Card from '@/components/ui/Card';
 
-export default function BeaconStatus() {
+export default function BeaconStatus({ beaconErrorReason }: { beaconErrorReason?: string }) {
   const { currentBeaconStatus } = useAttendanceStore();
   const { colors } = useTheme();
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -53,12 +53,19 @@ export default function BeaconStatus() {
           text: "Connected to beacon",
           color: colors.success
         };
-      case 'error':
+      case 'error': {
+        let errorText = "No class session found for this beacon. Please check your schedule or contact your instructor.";
+        if (beaconErrorReason === 'window-closed') {
+          errorText = "Attendance window is closed for this class.";
+        } else if (beaconErrorReason === 'ble-error') {
+          errorText = "Bluetooth error. Please check your device and permissions.";
+        }
         return {
           icon: <Feather name="alert-circle" size={24} color={colors.error} />,
-          text: "Error connecting to beacon",
+          text: errorText,
           color: colors.error
         };
+      }
       case 'inactive':
       default:
         return {

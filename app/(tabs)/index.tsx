@@ -20,7 +20,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords } = useAttendanceStore();
-  const { isScanning, startScanning, stopScanning } = useBeacon();
+  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
   const { colors } = useTheme();
   
   // Get today's classes
@@ -107,7 +107,7 @@ export default function HomeScreen() {
           </View>
         </View>
         
-        <BeaconStatus />
+        <BeaconStatus beaconErrorReason={beaconErrorReason} />
         
         <AttendanceStats 
           totalClasses={totalClasses}

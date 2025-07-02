@@ -22,11 +22,17 @@ const mockLogin = async (email: string, password: string): Promise<{ user: User;
   if (email === "student@uni.edu" && password === "password") {
     return {
       user: {
-        id: "1",
+        id: "11111111-1111-1111-1111-111111111111",
         name: "John Doe",
         email: "student@uni.edu",
         studentId: "S12345",
-        deviceId: "device-123"
+        deviceId: "device-123",
+        role: "student",
+        firstName: "John",
+        lastName: "Doe",
+        approvalStatus: "approved",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       },
       token: "mock-jwt-token"
     };

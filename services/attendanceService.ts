@@ -8,24 +8,35 @@ export class AttendanceService {
   static async recordAttendance(
     sessionId: string,
     studentId: string,
-    method: 'BLE' | 'QR' | 'manual',
+    method: 'ble' | 'qr-code' | 'manual' | 'gps' | 'nfc',
     latitude?: number,
     longitude?: number,
     deviceInfo?: any
   ): Promise<ApiResponse<AttendanceRecord>> {
     try {
+      // Fetch session and course info for denormalized fields
+      const { data: session, error: sessionError } = await supabase
+        .from('class_sessions')
+        .select('id, session_date, course_id, course:courses(id, code, name)')
+        .eq('id', sessionId)
+        .single();
+      if (sessionError) throw sessionError;
+      // Insert attendance record with denormalized fields
       const { data, error } = await supabase
         .from('attendance_records')
         .insert({
           session_id: sessionId,
           student_id: studentId,
           method,
-          status: 'pending', // Will be verified by lecturer
+          status: 'verified', // Auto-verify
           check_in_time: new Date().toISOString(),
           latitude,
           longitude,
           device_info: deviceInfo,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          course_name: session.course?.name || null,
+          course_code: session.course?.code || null,
+          date: session.session_date || new Date().toISOString().split('T')[0],
         })
         .select(`
           *,
@@ -55,9 +66,9 @@ export class AttendanceService {
         deviceInfo: data.device_info,
         verifiedBy: data.verified_by,
         verifiedAt: data.verified_at,
-        courseName: data.session?.course?.name || 'Unknown Course',
-        courseCode: data.session?.course?.code || 'UNKNOWN',
-        date: data.session?.session_date || new Date().toISOString().split('T')[0],
+        courseName: data.course_name || data.session?.course?.name || 'Unknown Course',
+        courseCode: data.course_code || data.session?.course?.code || 'UNKNOWN',
+        date: data.date || data.session?.session_date || new Date().toISOString().split('T')[0],
         createdAt: data.created_at,
         session: data.session
       };
@@ -129,39 +140,39 @@ export class AttendanceService {
    */
   static async getTodaysSessions(studentId: string): Promise<ClassSession[]> {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // First get the student's enrolled courses
-      const { data: enrollments } = await supabase
+      // Get the user's enrolled courses
+      const { data: enrollments, error: enrollmentsError } = await supabase
         .from('course_enrollments')
         .select('course_id')
         .eq('student_id', studentId);
-
+      if (enrollmentsError) throw enrollmentsError;
       if (!enrollments || enrollments.length === 0) {
         return [];
       }
-
       const courseIds = enrollments.map(e => e.course_id);
 
+      // Get today's date range (local time)
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+
+      // Get today's sessions for those courses, with course, instructor, and beacon
       const { data, error } = await supabase
         .from('class_sessions')
         .select(`
           *,
           course:courses(
             *,
-            instructor:users!courses_instructor_id_fkey(
-              first_name,
-              last_name,
-              email
-            ),
-            beacon:ble_beacons(*)
-          )
+            instructor:users!courses_instructor_id_fkey(*)
+          ),
+          beacon:ble_beacons(*)
         `)
-        .eq('session_date', today)
+        .gte('session_date', startIso)
+        .lt('session_date', endIso)
         .in('course_id', courseIds);
-
       if (error) throw error;
-
       return data?.map((session: any) => ({
         id: session.id,
         courseId: session.course_id,
@@ -172,11 +183,11 @@ export class AttendanceService {
         endTime: session.end_time,
         location: session.location,
         sessionType: session.session_type,
-        // Map database fields to mobile app expected fields
         qrCodeActive: session.qr_code_active,
         qrCodeExpiresAt: session.qr_code_expires_at,
         beaconEnabled: session.beacon_enabled,
         beaconId: session.beacon_id,
+        beacon: session.beacon,
         attendanceWindowStart: session.attendance_window_start,
         attendanceWindowEnd: session.attendance_window_end,
         createdAt: session.created_at
