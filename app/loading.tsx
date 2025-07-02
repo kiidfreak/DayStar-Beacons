@@ -48,18 +48,18 @@ export default function LoadingScreen() {
     }, 800); // Reduced from 1000ms to 800ms
     
     // Fallback timer to prevent infinite loading
-    const fallbackTimer = setTimeout(() => {
-      console.warn('Loading screen timeout, forcing navigation');
-      try {
-        router.replace('/(auth)/select-university');
-      } catch (error) {
-        console.error('Fallback navigation error:', error);
-      }
-    }, 3000);
+    // const fallbackTimer = setTimeout(() => {
+    //   console.warn('Loading screen timeout, forcing navigation');
+    //   try {
+    //     router.replace('/(auth)/select-university');
+    //   } catch (error) {
+    //     console.error('Fallback navigation error:', error);
+    //   }
+    // }, 3000);
     
     return () => {
       clearTimeout(timer);
-      clearTimeout(fallbackTimer);
+      // clearTimeout(fallbackTimer);
     };
   }, [isAuthenticated, university, router, fadeAnim, scaleAnim]);
   

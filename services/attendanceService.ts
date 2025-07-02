@@ -313,4 +313,36 @@ export class AttendanceService {
       throw error;
     }
   }
+
+  static async getAllAttendance(): Promise<AttendanceRecord[]> {
+    console.log('getAllAttendance called');
+    // Return mock data for now
+    return [
+      {
+        id: 'att-1',
+        sessionId: 'sess-1',
+        studentId: 'S12345',
+        method: 'QR',
+        status: 'pending',
+        checkInTime: '2024-07-01T09:00:00Z',
+        courseName: 'Math 101',
+        courseCode: 'MATH101',
+        date: '2024-07-01',
+        createdAt: '2024-07-01T09:00:00Z',
+      },
+      {
+        id: 'att-2',
+        sessionId: 'sess-2',
+        studentId: 'S54321',
+        method: 'QR',
+        status: 'verified',
+        checkInTime: '2024-07-01T10:00:00Z',
+        courseName: 'Physics 201',
+        courseCode: 'PHYS201',
+        date: '2024-07-01',
+        createdAt: '2024-07-01T10:00:00Z',
+      },
+      // Add more mock records as needed
+    ];
+  }
 } 

@@ -1,10 +1,10 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
-import { Stack, SplashScreen } from "expo-router";
+import { Stack, SplashScreen, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/hooks/useTheme";
-import { useColorScheme, Platform, StatusBar } from "react-native";
+import { useColorScheme, Platform, StatusBar, View, ActivityIndicator } from "react-native";
 import { useThemeStore } from "@/store/themeStore";
 import { useUniversityStore } from "@/store/universityStore";
 
@@ -61,12 +61,13 @@ export default function RootLayout() {
       console.warn('Font loading timeout, proceeding anyway');
       setIsReady(true);
       SplashScreen.hideAsync().catch(console.error);
-    }, 3000); // 3 second fallback
+    }, 7000); // 7 second fallback
     
     return () => clearTimeout(fallbackTimer);
   }, []);
 
   if (!isReady) {
+    console.log('Font loading/isReady:', isReady);
     return null;
   }
 
@@ -74,10 +75,29 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user, hydrated } = useAuthStore();
   const { university } = useUniversityStore();
   const { colors, isDark } = useTheme();
-  
+  const router = useRouter();
+
+  if (!hydrated) {
+    console.log('Auth store not hydrated, showing spinner');
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+  console.log('Auth store hydrated, rendering app');
+
+  // Redirect admin users to sidebar admin UI
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'admin') {
+      router.replace('/(sidebar)/admin/approvals');
+    }
+  }, [isAuthenticated, user, router]);
+
+  // Always render the default stack
   return (
     <>
       {/* Fixed status bar handling for mobile to prevent content overlap */}

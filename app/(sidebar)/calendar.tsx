@@ -42,6 +42,11 @@ export default function CalendarScreen() {
     day: 'numeric',
   });
   
+  // Debug logs
+  console.log('courses:', courses);
+  console.log('selectedDate:', selectedDate);
+  console.log('coursesForSelectedDay:', coursesForSelectedDay);
+  
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>

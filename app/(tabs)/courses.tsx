@@ -8,6 +8,8 @@ import EmptyState from '@/components/EmptyState';
 import { Feather } from '@expo/vector-icons';
 import Card from '@/components/ui/Card';
 
+// This screen displays courses from the attendance store. Ensure fetchCourses is called and the user is enrolled in courses for them to appear.
+
 export default function CoursesScreen() {
   const router = useRouter();
   const { courses } = useAttendanceStore();
@@ -16,6 +18,9 @@ export default function CoursesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  
+  // Debug log
+  console.log('courses:', courses);
   
   // Filter courses based on selected day and search query
   const filteredCourses = courses.filter(course => {

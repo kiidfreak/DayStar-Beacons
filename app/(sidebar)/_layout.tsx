@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuthStore } from '@/store/authStore';
@@ -14,10 +14,23 @@ export default function SidebarLayout() {
   const { colors } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { user, logout, isAuthenticated, hydrated } = useAuthStore();
+  // Debug log
+  console.log('Sidebar user:', user);
   const [expanded, setExpanded] = useState(false); // Start collapsed by default
   const windowWidth = Dimensions.get('window').width;
   const isMobile = windowWidth < 768;
+  
+  if (!hydrated) {
+    // Show a loading spinner while waiting for hydration
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        {/* Use your custom Loading component if available, else fallback to ActivityIndicator */}
+        {/* <Loading /> */}
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
   
   // Determine if sidebar should be shown as overlay on mobile
   const showAsOverlay = isMobile && expanded;
@@ -66,6 +79,33 @@ export default function SidebarLayout() {
     },
   ];
   
+  // Role-based navigation items
+  const adminNavItems = [
+    {
+      icon: <Feather name="check-circle" size={24} color={isRouteActive('/admin/approvals') ? colors.primary : colors.textSecondary} />,
+      label: 'QR Approvals',
+      route: '/admin/approvals',
+    },
+    {
+      icon: <Feather name="clock" size={24} color={isRouteActive('/admin/history') ? colors.primary : colors.textSecondary} />,
+      label: 'Attendance History',
+      route: '/admin/history',
+    },
+    {
+      icon: <Feather name="bar-chart-2" size={24} color={isRouteActive('/admin/reports') ? colors.primary : colors.textSecondary} />,
+      label: 'Reports',
+      route: '/admin/reports',
+    },
+    {
+      icon: <Feather name="settings" size={24} color={isRouteActive('/settings') ? colors.primary : colors.textSecondary} />,
+      label: 'Settings',
+      route: '/settings',
+    },
+  ];
+  
+  // Use adminNavItems if admin, else student navItems
+  const navItemsToShow = user?.role === 'admin' ? adminNavItems : navItems;
+  
   // Handle navigation
   const navigateTo = (route: string) => {
     router.push(route as any);
@@ -100,41 +140,46 @@ export default function SidebarLayout() {
         ]}
       >
         {/* Header with logo/branding */}
-        <View style={styles.sidebarHeader}>
+        <View
+          style={[
+            styles.sidebarHeader,
+            expanded
+              ? {}
+              : { justifyContent: 'center', paddingLeft: 0, paddingRight: 0 },
+          ]}
+        >
           {expanded ? (
-            <LinearGradient
-              colors={[colors.primary, colors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoContainer}
+            <>
+              <LinearGradient
+                colors={[colors.primary, colors.secondary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.logoContainer}
+              >
+                <Text style={styles.logoText}>UC</Text>
+              </LinearGradient>
+              <Text style={[styles.appName, { color: colors.text }]}>UniConnect</Text>
+              <TouchableOpacity
+                onPress={toggleSidebar}
+                style={[
+                  styles.toggleButton,
+                  { backgroundColor: `${colors.primary}15` },
+                ]}
+              >
+                <Feather name="chevron-left" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              onPress={toggleSidebar}
+              style={[
+                styles.toggleButton,
+                { backgroundColor: `${colors.primary}15` },
+              ]}
             >
-              <Text style={styles.logoText}>UC</Text>
-            </LinearGradient>
-          ) : null}
-          
-          <Text style={[
-            styles.appName, 
-            { 
-              color: colors.text,
-              display: expanded ? 'flex' : 'none'
-            }
-          ]}>
-            UniConnect
-          </Text>
-          
-          <TouchableOpacity 
-            onPress={toggleSidebar}
-            style={[
-              styles.toggleButton,
-              { backgroundColor: `${colors.primary}15` }
-            ]}
-          >
-            {expanded ? (
-              <Feather name="chevron-left" size={20} color={colors.primary} />
-            ) : (
               <Feather name="menu" size={20} color={colors.primary} />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
         
         {/* User profile section */}
@@ -161,7 +206,7 @@ export default function SidebarLayout() {
         
         {/* Navigation items */}
         <View style={styles.navItems}>
-          {navItems.map((item, index) => (
+          {navItemsToShow.map((item, index) => (
             <TouchableOpacity
               key={index}
               style={[
@@ -176,7 +221,6 @@ export default function SidebarLayout() {
               <View style={styles.navIcon}>
                 {item.icon}
               </View>
-              
               {expanded && (
                 <Text 
                   style={[
@@ -191,7 +235,6 @@ export default function SidebarLayout() {
                   {item.label}
                 </Text>
               )}
-              
               {isRouteActive(item.route) && expanded && (
                 <View 
                   style={[
@@ -229,7 +272,7 @@ export default function SidebarLayout() {
         styles.content,
         { 
           backgroundColor: colors.background,
-          marginLeft: showAsOverlay ? 0 : (expanded ? SIDEBAR_WIDTH : COLLAPSED_WIDTH)
+          marginLeft: showAsOverlay ? 0 : (expanded ? SIDEBAR_WIDTH : 0)
         }
       ]}>
         {/* Overlay for mobile when sidebar is expanded */}
@@ -243,9 +286,8 @@ export default function SidebarLayout() {
             activeOpacity={1}
           />
         )}
-        
-        {/* Mobile header with menu button */}
-        {isMobile && !expanded && (
+        {/* Mobile header with menu button - only show when sidebar is not visible */}
+        {isMobile && !expanded && !showAsOverlay && (
           <View style={[
             styles.mobileHeader,
             { 
@@ -253,12 +295,10 @@ export default function SidebarLayout() {
               borderBottomColor: colors.border
             }
           ]}>
-            <TouchableOpacity onPress={toggleSidebar}>
+            {/* <TouchableOpacity onPress={toggleSidebar}>
               <Feather name="menu" size={24} color={colors.primary} />
-            </TouchableOpacity>
-            <Text style={[styles.mobileTitle, { color: colors.text }]}>
-              UniConnect
-            </Text>
+            </TouchableOpacity> */}
+            <Text style={[styles.mobileTitle, { color: colors.text }]}>UniConnect</Text>
             <Avatar 
               name={user?.name || 'Student'} 
               size="small"

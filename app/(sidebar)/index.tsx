@@ -19,7 +19,22 @@ import Button from '@/components/ui/Button';
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords } = useAttendanceStore();
+  if (!user) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
+        <Text style={{ color: 'black', fontSize: 20 }}>Please log in to continue.</Text>
+      </View>
+    );
+  }
+  if (user.role !== 'student') {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
+        <Text style={{ color: 'black', fontSize: 20 }}>Welcome, {user.name ?? 'Admin'}!</Text>
+        <Text style={{ color: 'gray', marginTop: 8 }}>You are logged in as an admin.</Text>
+      </View>
+    );
+  }
+  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords } = useAttendanceStore();
   const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
   const { colors } = useTheme();
   
@@ -44,6 +59,13 @@ export default function HomeScreen() {
       }
     };
   }, []);
+  
+  // Fetch attendance records when user logs in or changes
+  useEffect(() => {
+    if (user?.id) {
+      fetchAttendanceRecords(user.id);
+    }
+  }, [user?.id, fetchAttendanceRecords]);
   
   // Get today's date in a readable format
   const today = new Date().toLocaleDateString('en-US', {

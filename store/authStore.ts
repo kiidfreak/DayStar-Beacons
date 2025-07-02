@@ -9,6 +9,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  hydrated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
@@ -22,7 +23,7 @@ const mockLogin = async (email: string, password: string): Promise<{ user: User;
   if (email === "student@uni.edu" && password === "password") {
     return {
       user: {
-        id: "11111111-1111-1111-1111-111111111111",
+        id: "2481afa5-833d-42de-8738-47c079753140",
         name: "John Doe",
         email: "student@uni.edu",
         studentId: "S12345",
@@ -37,6 +38,23 @@ const mockLogin = async (email: string, password: string): Promise<{ user: User;
       token: "mock-jwt-token"
     };
   }
+  // Add admin login
+  if (email === "admin@uni.edu" && password === "adminpass") {
+    return {
+      user: {
+        id: "869422ee-0b93-446a-b09c-3d062d44698b",
+        name: "Admin User",
+        email: "admin@uni.edu",
+        role: "admin",
+        firstName: "Admin",
+        lastName: "User",
+        approvalStatus: "approved",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      token: "mock-admin-token"
+    };
+  }
   
   throw new Error("Invalid credentials");
 };
@@ -49,6 +67,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      hydrated: false,
       
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -107,8 +126,8 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // Add error handling for persistence
       onRehydrateStorage: () => (state, error) => {
+        set({ hydrated: true });
         if (error) {
           console.error('Auth store rehydration error:', error);
         }
@@ -116,3 +135,15 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// Fallback: set hydrated to true after mount if it hasn't been set (for web and native)
+if (typeof window !== 'undefined' || typeof global !== 'undefined') {
+  setTimeout(() => {
+    const { hydrated } = useAuthStore.getState();
+    console.log('Hydration fallback fired, hydrated:', hydrated);
+    if (!hydrated) {
+      useAuthStore.setState({ hydrated: true });
+      console.log('Hydration fallback set hydrated to true');
+    }
+  }, 100);
+}

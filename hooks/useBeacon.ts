@@ -152,15 +152,15 @@ export function useBeacon() {
           console.error('BLE ERROR: Device scan error:', error);
           return;
         }
-        if (device) {
-          console.log('BLE DEBUG: Looking for', beaconMac, 'Found:', device.id, device.name);
-        }
+        // if (device) {
+        //   console.log('BLE DEBUG: Looking for', beaconMac, 'Found:', device.id, device.name);
+        // }
         if (device && device.id.toUpperCase() === beaconMac) {
           setBeaconStatus('detected');
           if (!attendanceLoggedRef.current && user && sessionId) {
             // Check attendance window before logging
             if (!isWithinAttendanceWindow(selectedSession)) {
-              console.warn('BLE DEBUG: Not within attendance window for session:', selectedSession);
+              // console.warn('BLE DEBUG: Not within attendance window for session:', selectedSession);
               setBeaconStatus('error');
               setBeaconErrorReason('window-closed');
               setIsScanning(false);

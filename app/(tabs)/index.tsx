@@ -19,12 +19,20 @@ import Button from '@/components/ui/Button';
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords } = useAttendanceStore();
-  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
   const { colors } = useTheme();
+  // Prevent BLE scanning and student logic for admin
+  if (user?.role !== 'student') {
+    return null;
+  }
+  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords } = useAttendanceStore();
+  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
   
   // Get today's classes
   const todayCourses = getTodayCourses();
+  
+  // Debug logs
+  console.log('todayCourses:', todayCourses);
+  console.log('currentCourse (nearby/active class):', currentCourse);
   
   // Calculate attendance stats
   const totalClasses = attendanceRecords.length;
@@ -44,6 +52,14 @@ export default function HomeScreen() {
       }
     };
   }, []);
+  
+  // Fetch attendance records when user logs in or changes
+  useEffect(() => {
+    if (user && typeof user.id === 'string' && user.id.length > 0) {
+      console.log('Fetching attendance for user:', user.id);
+      fetchAttendanceRecords(user.id);
+    }
+  }, [user?.id, fetchAttendanceRecords]);
   
   // Get today's date in a readable format
   const today = new Date().toLocaleDateString('en-US', {

@@ -26,6 +26,8 @@ interface AttendanceState {
   getCourseAttendance: (courseId: string) => AttendanceRecord[];
   fetchCourses: (studentId: string) => Promise<void>;
   fetchAttendanceRecords: (studentId: string) => Promise<void>;
+  setAttendanceRecords: (records: AttendanceRecord[]) => void;
+  fetchAllAttendanceRecords: () => Promise<void>;
 }
 
 export const useAttendanceStore = create<AttendanceState>()(
@@ -102,6 +104,18 @@ export const useAttendanceStore = create<AttendanceState>()(
         set({ isLoadingAttendance: true, attendanceError: null });
         try {
           const attendanceRecords = await AttendanceService.getStudentAttendance(studentId);
+          set({ attendanceRecords, isLoadingAttendance: false });
+        } catch (error: any) {
+          set({ attendanceError: error.message || 'Failed to fetch attendance records', isLoadingAttendance: false });
+        }
+      },
+      
+      setAttendanceRecords: (records) => set({ attendanceRecords: records }),
+      
+      fetchAllAttendanceRecords: async () => {
+        set({ isLoadingAttendance: true, attendanceError: null });
+        try {
+          const attendanceRecords = await AttendanceService.getAllAttendance();
           set({ attendanceRecords, isLoadingAttendance: false });
         } catch (error: any) {
           set({ attendanceError: error.message || 'Failed to fetch attendance records', isLoadingAttendance: false });
