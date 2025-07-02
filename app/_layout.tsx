@@ -241,6 +241,12 @@ function RootLayoutNav() {
             headerTitleAlign: "center",
           }} 
         />
+        <Stack.Screen 
+          name="(sidebar)" 
+          options={{ 
+            headerShown: false,
+          }} 
+        />
       </Stack>
     </>
   );

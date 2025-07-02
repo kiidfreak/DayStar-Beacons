@@ -49,10 +49,6 @@ export default function QRApprovalsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}> 
-      {/* TEST: Visible test element to confirm rendering */}
-      <View style={{ backgroundColor: 'yellow', padding: 16, marginBottom: 16, alignItems: 'center' }}>
-        <Text style={{ color: 'black', fontSize: 24 }}>ADMIN APPROVALS PAGE</Text>
-      </View>
       <Text style={[styles.title, { color: colors.text }]}>QR Fallback Approvals</Text>
       {pendingRecords.length === 0 ? (
         <Text style={{ color: colors.textSecondary }}>No pending QR check-ins.</Text>
