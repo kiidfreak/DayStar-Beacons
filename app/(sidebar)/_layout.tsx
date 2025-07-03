@@ -11,26 +11,18 @@ const SIDEBAR_WIDTH = 250;
 const COLLAPSED_WIDTH = 70;
 
 export default function SidebarLayout() {
+  // All hooks at the top
   const { colors } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout, isAuthenticated, hydrated } = useAuthStore();
-  // Debug log
-  console.log('Sidebar user:', user);
   const [expanded, setExpanded] = useState(false); // Start collapsed by default
   const windowWidth = Dimensions.get('window').width;
   const isMobile = windowWidth < 768;
   
-  if (!hydrated) {
-    // Show a loading spinner while waiting for hydration
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        {/* Use your custom Loading component if available, else fallback to ActivityIndicator */}
-        {/* <Loading /> */}
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
+  useEffect(() => {
+    setExpanded(false); // Always collapse sidebar on route change
+  }, [pathname]);
   
   // Determine if sidebar should be shown as overlay on mobile
   const showAsOverlay = isMobile && expanded;
@@ -109,208 +101,215 @@ export default function SidebarLayout() {
   // Handle navigation
   const navigateTo = (route: string) => {
     router.push(route as any);
-    if (isMobile) {
-      setExpanded(false);
-    }
+    setExpanded(false); // Always collapse after navigation
   };
   
   // Handle logout
   const handleLogout = () => {
     logout();
-    // Use setTimeout to ensure state is updated before navigation
     setTimeout(() => {
       router.replace('/(auth)/login');
-    }, 100);
+    }, 300);
   };
   
+  // Conditional rendering instead of early return
   return (
-    <View style={styles.container}>
-      {/* Sidebar */}
-      <View 
-        style={[
-          styles.sidebar, 
-          { 
-            backgroundColor: colors.card,
-            borderRightColor: colors.border,
-            width: expanded ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,
-            position: showAsOverlay ? 'absolute' : 'relative',
-            zIndex: showAsOverlay ? 100 : 1,
-            height: showAsOverlay ? '100%' : '100%',
-          }
-        ]}
-      >
-        {/* Header with logo/branding */}
-        <View
-          style={[
-            styles.sidebarHeader,
-            expanded
-              ? {}
-              : { justifyContent: 'center', paddingLeft: 0, paddingRight: 0 },
-          ]}
-        >
-          {expanded ? (
-            <>
-              <LinearGradient
-                colors={[colors.primary, colors.secondary]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.logoContainer}
-              >
-                <Text style={styles.logoText}>UC</Text>
-              </LinearGradient>
-              <Text style={[styles.appName, { color: colors.text }]}>UniConnect</Text>
-              <TouchableOpacity
-                onPress={toggleSidebar}
-                style={[
-                  styles.toggleButton,
-                  { backgroundColor: `${colors.primary}15` },
-                ]}
-              >
-                <Feather name="chevron-left" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <TouchableOpacity
-              onPress={toggleSidebar}
+    <>
+      {!hydrated ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <View style={styles.container}>
+          {/* Sidebar */}
+          <View 
+            style={[
+              styles.sidebar, 
+              { 
+                backgroundColor: colors.card,
+                borderRightColor: colors.border,
+                width: expanded ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,
+                position: showAsOverlay ? 'absolute' : 'relative',
+                zIndex: showAsOverlay ? 100 : 1,
+                height: showAsOverlay ? '100%' : '100%',
+              }
+            ]}
+          >
+            {/* Header with logo/branding */}
+            <View
               style={[
-                styles.toggleButton,
-                { backgroundColor: `${colors.primary}15` },
+                styles.sidebarHeader,
+                expanded
+                  ? {}
+                  : { justifyContent: 'center', paddingLeft: 0, paddingRight: 0 },
               ]}
             >
-              <Feather name="menu" size={20} color={colors.primary} />
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        {/* User profile section */}
-        <View style={[
-          styles.userSection,
-          { borderBottomColor: colors.border }
-        ]}>
-          <Avatar 
-            name={user?.name || 'Student'} 
-            size={expanded ? "medium" : "small"}
-          />
-          
-          {expanded && (
-            <View style={styles.userInfo}>
-              <Text style={[styles.userName, { color: colors.text }]}>
-                {user?.name || 'Student'}
-              </Text>
-              <Text style={[styles.userRole, { color: colors.textSecondary }]}>
-                {user?.studentId || 'S12345'}
-              </Text>
-            </View>
-          )}
-        </View>
-        
-        {/* Navigation items */}
-        <View style={styles.navItems}>
-          {navItemsToShow.map((item, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.navItem,
-                isRouteActive(item.route) && [
-                  styles.activeNavItem,
-                  { backgroundColor: `${colors.primary}15` }
-                ]
-              ]}
-              onPress={() => navigateTo(item.route)}
-            >
-              <View style={styles.navIcon}>
-                {item.icon}
-              </View>
-              {expanded && (
-                <Text 
+              {expanded ? (
+                <>
+                  <LinearGradient
+                    colors={[colors.primary, colors.secondary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.logoContainer}
+                  >
+                    <Text style={styles.logoText}>UC</Text>
+                  </LinearGradient>
+                  <Text style={[styles.appName, { color: colors.text }]}>UniConnect</Text>
+                  <TouchableOpacity
+                    onPress={toggleSidebar}
+                    style={[
+                      styles.toggleButton,
+                      { backgroundColor: `${colors.primary}15` },
+                    ]}
+                  >
+                    <Feather name="chevron-left" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                // Only show menu icon when collapsed
+                <TouchableOpacity
+                  onPress={toggleSidebar}
                   style={[
-                    styles.navLabel,
-                    { 
-                      color: isRouteActive(item.route) 
-                        ? colors.primary 
-                        : colors.text 
-                    }
+                    styles.toggleButton,
+                    { backgroundColor: `${colors.primary}15` },
                   ]}
                 >
-                  {item.label}
+                  <Feather name="menu" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            {/* User profile section */}
+            <View style={[
+              styles.userSection,
+              { borderBottomColor: colors.border }
+            ]}>
+              <Avatar 
+                name={user?.name || 'Student'} 
+                size={expanded ? "medium" : "small"}
+              />
+              
+              {expanded && (
+                <View style={styles.userInfo}>
+                  <Text style={[styles.userName, { color: colors.text }]}>
+                    {user?.name || 'Student'}
+                  </Text>
+                  <Text style={[styles.userRole, { color: colors.textSecondary }]}>
+                    {user?.studentId || 'S12345'}
+                  </Text>
+                </View>
+              )}
+            </View>
+            
+            {/* Navigation items */}
+            <View style={styles.navItems}>
+              {navItemsToShow.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.navItem,
+                    isRouteActive(item.route) && [
+                      styles.activeNavItem,
+                      { backgroundColor: `${colors.primary}15` }
+                    ]
+                  ]}
+                  onPress={() => navigateTo(item.route)}
+                >
+                  <View style={styles.navIcon}>
+                    {item.icon}
+                  </View>
+                  {expanded && (
+                    <Text 
+                      style={[
+                        styles.navLabel,
+                        { 
+                          color: isRouteActive(item.route) 
+                            ? colors.primary 
+                            : colors.text 
+                        }
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  )}
+                  {isRouteActive(item.route) && expanded && (
+                    <View 
+                      style={[
+                        styles.activeIndicator,
+                        { backgroundColor: colors.primary }
+                      ]} 
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            {/* Logout button */}
+            <TouchableOpacity
+              style={[
+                styles.logoutButton,
+                { borderTopColor: colors.border }
+              ]}
+              onPress={handleLogout}
+            >
+              <View style={styles.navIcon}>
+                <Feather name="log-out" size={24} color={colors.error} />
+              </View>
+              
+              {expanded && (
+                <Text style={[styles.logoutText, { color: colors.error }]}>
+                  Logout
                 </Text>
               )}
-              {isRouteActive(item.route) && expanded && (
-                <View 
-                  style={[
-                    styles.activeIndicator,
-                    { backgroundColor: colors.primary }
-                  ]} 
-                />
-              )}
             </TouchableOpacity>
-          ))}
-        </View>
-        
-        {/* Logout button */}
-        <TouchableOpacity
-          style={[
-            styles.logoutButton,
-            { borderTopColor: colors.border }
-          ]}
-          onPress={handleLogout}
-        >
-          <View style={styles.navIcon}>
-            <Feather name="log-out" size={24} color={colors.error} />
           </View>
           
-          {expanded && (
-            <Text style={[styles.logoutText, { color: colors.error }]}>
-              Logout
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
-      
-      {/* Main content */}
-      <View style={[
-        styles.content,
-        { 
-          backgroundColor: colors.background,
-          marginLeft: showAsOverlay ? 0 : (expanded ? SIDEBAR_WIDTH : 0)
-        }
-      ]}>
-        {/* Overlay for mobile when sidebar is expanded */}
-        {showAsOverlay && (
-          <TouchableOpacity
-            style={[
-              styles.overlay,
-              { backgroundColor: 'rgba(0,0,0,0.5)' }
-            ]}
-            onPress={() => setExpanded(false)}
-            activeOpacity={1}
-          />
-        )}
-        {/* Mobile header with menu button - only show when sidebar is not visible */}
-        {isMobile && !expanded && !showAsOverlay && (
+          {/* Main content */}
           <View style={[
-            styles.mobileHeader,
+            styles.content,
             { 
               backgroundColor: colors.background,
-              borderBottomColor: colors.border
+              marginLeft: showAsOverlay ? 0 : (expanded ? SIDEBAR_WIDTH : 0)
             }
           ]}>
-            {/* <TouchableOpacity onPress={toggleSidebar}>
-              <Feather name="menu" size={24} color={colors.primary} />
-            </TouchableOpacity> */}
-            <Text style={[styles.mobileTitle, { color: colors.text }]}>UniConnect</Text>
-            <Avatar 
-              name={user?.name || 'Student'} 
-              size="small"
-            />
+            {/* Overlay for mobile when sidebar is expanded */}
+            {showAsOverlay && (
+              <TouchableOpacity
+                style={[
+                  styles.overlay,
+                  { backgroundColor: 'rgba(0,0,0,0.5)' }
+                ]}
+                onPress={() => setExpanded(false)}
+                activeOpacity={1}
+              />
+            )}
+            {/* Mobile header with menu button - only show when sidebar is not visible */}
+            {isMobile && !expanded && !showAsOverlay && (
+              <View style={[
+                styles.mobileHeader,
+                { 
+                  backgroundColor: colors.background,
+                  borderBottomColor: colors.border
+                }
+              ]}>
+                {/* <TouchableOpacity onPress={toggleSidebar}>
+                  <Feather name="menu" size={24} color={colors.primary} />
+                </TouchableOpacity> */}
+                <Text style={[styles.mobileTitle, { color: colors.text }]}>UniConnect</Text>
+                <Avatar 
+                  name={user?.name || 'Student'} 
+                  size="small"
+                />
+              </View>
+            )}
+            
+            <Stack screenOptions={{
+              headerShown: false,
+            }} />
           </View>
-        )}
-        
-        <Stack screenOptions={{
-          headerShown: false,
-        }} />
-      </View>
-    </View>
+        </View>
+      )}
+    </>
   );
 }
 

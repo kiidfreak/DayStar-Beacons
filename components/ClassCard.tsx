@@ -27,73 +27,135 @@ export default function ClassCard({
     isActive && { borderColor: colors.primary }
   ]);
   
-  return (
-    <TouchableOpacity 
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Card 
-        gradient={isActive}
-        elevated
-        style={containerStyle}
-      >
-        <View style={styles.header}>
-          <View style={styles.codeContainer}>
-            <Text style={[styles.courseCode, { color: colors.primary }]}>
-              {course.code}
-            </Text>
-            {showAttendanceRate && (
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        <Card 
+          gradient={isActive}
+          elevated
+          style={containerStyle}
+        >
+          <View style={styles.header}>
+            <View style={styles.codeContainer}>
+              <Text style={[styles.courseCode, { color: colors.primary }]}>
+                {course.code}
+              </Text>
+              {showAttendanceRate && (
+                <Badge 
+                  text="85% Attendance" 
+                  variant="success" 
+                  style={{ marginLeft: 8 }}
+                />
+              )}
+            </View>
+            
+            {isActive && (
               <Badge 
-                text="85% Attendance" 
-                variant="success" 
-                style={{ marginLeft: 8 }}
+                text="In Progress" 
+                variant="primary" 
+                icon={<View style={[styles.activeDot, { backgroundColor: 'white' }]} />}
               />
             )}
           </View>
           
-          {isActive && (
+          <Text style={[styles.courseName, { color: colors.text }]}>
+            {course.name}
+          </Text>
+          
+          <Text style={[styles.instructor, { color: colors.textSecondary }]}>
+            {course.instructorName || (course.instructor ? course.instructor.name : 'Unknown Instructor')}
+          </Text>
+          
+          <View style={styles.detailsContainer}>
+            <View style={styles.detailItem}>
+              <MaterialCommunityIcons name="clock" size={24} color="currentColor" />
+              <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                {course.schedule}
+              </Text>
+            </View>
+            
+            <View style={styles.detailItem}>
+              <MaterialCommunityIcons name="map-marker" size={24} color="currentColor" />
+              <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                {course.room}
+              </Text>
+            </View>
+            
+            {course.days && (
+              <View style={styles.detailItem}>
+                <MaterialCommunityIcons name="calendar" size={24} color="currentColor" />
+                <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                  {course.days.join(', ')}
+                </Text>
+              </View>
+            )}
+          </View>
+        </Card>
+      </TouchableOpacity>
+    );
+  }
+  return (
+    <Card 
+      gradient={isActive}
+      elevated
+      style={containerStyle}
+    >
+      <View style={styles.header}>
+        <View style={styles.codeContainer}>
+          <Text style={[styles.courseCode, { color: colors.primary }]}>
+            {course.code}
+          </Text>
+          {showAttendanceRate && (
             <Badge 
-              text="In Progress" 
-              variant="primary" 
-              icon={<View style={[styles.activeDot, { backgroundColor: 'white' }]} />}
+              text="85% Attendance" 
+              variant="success" 
+              style={{ marginLeft: 8 }}
             />
           )}
         </View>
         
-        <Text style={[styles.courseName, { color: colors.text }]}>
-          {course.name}
-        </Text>
-        
-        <Text style={[styles.instructor, { color: colors.textSecondary }]}>
-          {course.instructorName || (course.instructor ? course.instructor.name : 'Unknown Instructor')}
-        </Text>
-        
-        <View style={styles.detailsContainer}>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="clock" size={24} color="currentColor" />
-            <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-              {course.schedule}
-            </Text>
-          </View>
-          
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="map-marker" size={24} color="currentColor" />
-            <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-              {course.room}
-            </Text>
-          </View>
-          
-          {course.days && (
-            <View style={styles.detailItem}>
-              <MaterialCommunityIcons name="calendar" size={24} color="currentColor" />
-              <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                {course.days.join(', ')}
-              </Text>
-            </View>
-          )}
+        {isActive && (
+          <Badge 
+            text="In Progress" 
+            variant="primary" 
+            icon={<View style={[styles.activeDot, { backgroundColor: 'white' }]} />}
+          />
+        )}
+      </View>
+      
+      <Text style={[styles.courseName, { color: colors.text }]}>
+        {course.name}
+      </Text>
+      
+      <Text style={[styles.instructor, { color: colors.textSecondary }]}>
+        {course.instructorName || (course.instructor ? course.instructor.name : 'Unknown Instructor')}
+      </Text>
+      
+      <View style={styles.detailsContainer}>
+        <View style={styles.detailItem}>
+          <MaterialCommunityIcons name="clock" size={24} color="currentColor" />
+          <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+            {course.schedule}
+          </Text>
         </View>
-      </Card>
-    </TouchableOpacity>
+        
+        <View style={styles.detailItem}>
+          <MaterialCommunityIcons name="map-marker" size={24} color="currentColor" />
+          <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+            {course.room}
+          </Text>
+        </View>
+        
+        {course.days && (
+          <View style={styles.detailItem}>
+            <MaterialCommunityIcons name="calendar" size={24} color="currentColor" />
+            <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+              {course.days.join(', ')}
+            </Text>
+          </View>
+        )}
+      </View>
+    </Card>
   );
 }
 

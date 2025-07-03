@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Course, CourseEnrollmentRequest, ApiResponse } from '@/types';
+import { ClassSession } from '@/types';
 
 export class CourseService {
   /**
@@ -13,17 +14,18 @@ export class CourseService {
           course:courses(
             *,
             instructor:users!courses_instructor_id_fkey(
-              first_name,
-              last_name,
-              email
-            ),
-            school:schools(*),
-            beacon:ble_beacons(*)
+              id,
+              full_name,
+              email,
+              created_at,
+              role
+            )
           )
         `)
         .eq('student_id', studentId);
 
       if (error) throw error;
+      console.log('DEBUG getStudentCourses: data =', data, 'error =', error);
 
       return data?.map((enrollment: any) => {
         const course = enrollment.course;
@@ -34,9 +36,7 @@ export class CourseService {
           description: course.description,
           instructorId: course.instructor_id,
           instructor: course.instructor,
-          instructorName: course.instructor 
-            ? `${course.instructor.first_name} ${course.instructor.last_name}`
-            : 'Unknown Instructor',
+          instructorName: course.instructor?.full_name || 'Unknown Instructor',
           location: course.location,
           schedule: course.schedule,
           schoolId: course.school_id,
@@ -200,6 +200,113 @@ export class CourseService {
       } as Course;
     } catch (error) {
       console.error('Error fetching course details:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all class sessions for a given date for the current student
+   */
+  static async getSessionsForDate(date: string, studentId: string): Promise<ClassSession[]> {
+    try {
+      // First, get the student's enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('course_enrollments')
+        .select('course_id')
+        .eq('student_id', studentId);
+
+      if (enrollmentsError) throw enrollmentsError;
+      const courseIds = enrollments?.map((e: any) => e.course_id) || [];
+      if (courseIds.length === 0) return [];
+
+      // Now, get class sessions for those courses on the given date
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('class_sessions')
+        .select(`
+          *,
+          course:courses(*, instructor:users!courses_instructor_id_fkey(*))
+        `)
+        .in('course_id', courseIds)
+        .eq('session_date', date);
+
+      if (sessionsError) throw sessionsError;
+
+      // Map to ClassSession type
+      return sessions?.map((session: any) => ({
+        id: session.id,
+        courseId: session.course_id,
+        course: session.course,
+        instructorId: session.course?.instructor_id,
+        instructor: session.course?.instructor,
+        sessionDate: session.session_date,
+        startTime: session.start_time,
+        endTime: session.end_time,
+        location: session.location,
+        qrCodeActive: session.qr_code_active ?? false,
+        qrCodeExpiresAt: session.qr_code_expires_at,
+        beaconEnabled: session.beacon_enabled ?? false,
+        beaconId: session.beacon_id,
+        beacon: session.beacon,
+        attendanceWindowStart: session.attendance_window_start,
+        attendanceWindowEnd: session.attendance_window_end,
+        sessionType: session.session_type || 'regular',
+        createdAt: session.created_at,
+      })) || [];
+    } catch (error) {
+      console.error('Error fetching sessions for date:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all class sessions for a given student (no date filter)
+   */
+  static async getAllSessionsForStudent(studentId: string): Promise<ClassSession[]> {
+    try {
+      // Get the student's enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('course_enrollments')
+        .select('course_id')
+        .eq('student_id', studentId);
+
+      if (enrollmentsError) throw enrollmentsError;
+      const courseIds = enrollments?.map((e: any) => e.course_id) || [];
+      if (courseIds.length === 0) return [];
+
+      // Get all class sessions for those courses
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('class_sessions')
+        .select(`
+          *,
+          course:courses(*, instructor:users!courses_instructor_id_fkey(*))
+        `)
+        .in('course_id', courseIds);
+
+      if (sessionsError) throw sessionsError;
+
+      // Map to ClassSession type
+      return sessions?.map((session: any) => ({
+        id: session.id,
+        courseId: session.course_id,
+        course: session.course,
+        instructorId: session.course?.instructor_id,
+        instructor: session.course?.instructor,
+        sessionDate: session.session_date,
+        startTime: session.start_time,
+        endTime: session.end_time,
+        location: session.location,
+        qrCodeActive: session.qr_code_active ?? false,
+        qrCodeExpiresAt: session.qr_code_expires_at,
+        beaconEnabled: session.beacon_enabled ?? false,
+        beaconId: session.beacon_id,
+        beacon: session.beacon,
+        attendanceWindowStart: session.attendance_window_start,
+        attendanceWindowEnd: session.attendance_window_end,
+        sessionType: session.session_type || 'regular',
+        createdAt: session.created_at,
+      })) || [];
+    } catch (error) {
+      console.error('Error fetching all sessions for student:', error);
       throw error;
     }
   }

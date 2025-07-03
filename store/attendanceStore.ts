@@ -15,6 +15,7 @@ interface AttendanceState {
   isLoadingAttendance: boolean;
   coursesError: string | null;
   attendanceError: string | null;
+  bannerMessage: string | null;
   
   // Actions
   setBeaconStatus: (status: BeaconStatus) => void;
@@ -28,6 +29,8 @@ interface AttendanceState {
   fetchAttendanceRecords: (studentId: string) => Promise<void>;
   setAttendanceRecords: (records: AttendanceRecord[]) => void;
   fetchAllAttendanceRecords: () => Promise<void>;
+  setBannerMessage: (msg: string | null) => void;
+  clearBannerMessage: () => void;
 }
 
 export const useAttendanceStore = create<AttendanceState>()(
@@ -42,6 +45,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       isLoadingAttendance: false,
       coursesError: null,
       attendanceError: null,
+      bannerMessage: null,
       
       setBeaconStatus: (status) => set({ currentBeaconStatus: status }),
       
@@ -72,9 +76,9 @@ export const useAttendanceStore = create<AttendanceState>()(
       getTodayCourses: () => {
         const today = new Date();
         const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' }) as DayOfWeek;
-        
+        // console.log('DEBUG getTodayCourses: today is', dayOfWeek, 'courses:', get().courses);
         return get().courses.filter(course => 
-          course.days?.includes(dayOfWeek)
+          !course.days || course.days.includes(dayOfWeek)
         ).sort((a, b) => {
           // Sort by start time
           if (a.startTime && b.startTime) {
@@ -94,8 +98,10 @@ export const useAttendanceStore = create<AttendanceState>()(
         set({ isLoadingCourses: true, coursesError: null });
         try {
           const courses = await CourseService.getStudentCourses(studentId);
+          console.log('DEBUG fetchCourses (store): fetched courses =', courses);
           set({ courses, isLoadingCourses: false });
         } catch (error: any) {
+          console.error('DEBUG fetchCourses (store): error =', error);
           set({ coursesError: error.message || 'Failed to fetch courses', isLoadingCourses: false });
         }
       },
@@ -121,6 +127,10 @@ export const useAttendanceStore = create<AttendanceState>()(
           set({ attendanceError: error.message || 'Failed to fetch attendance records', isLoadingAttendance: false });
         }
       },
+      
+      setBannerMessage: (msg) => set({ bannerMessage: msg }),
+      
+      clearBannerMessage: () => set({ bannerMessage: null }),
     }),
     {
       name: 'attendance-storage',

@@ -16,51 +16,68 @@ import Avatar from '@/components/ui/Avatar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 
+function Banner() {
+  const { bannerMessage, clearBannerMessage } = useAttendanceStore();
+  useEffect(() => {
+    if (bannerMessage) {
+      const timer = setTimeout(() => clearBannerMessage(), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [bannerMessage]);
+  console.log('BANNER COMPONENT: bannerMessage =', bannerMessage);
+  if (!bannerMessage) return null;
+  return (
+    <View style={{ position: 'absolute', top: 50, left: 0, right: 0, backgroundColor: 'red', padding: 20, zIndex: 9999 }}>
+      <Text style={{ color: 'white', textAlign: 'center' }}>{bannerMessage}</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { colors } = useTheme();
-  // Prevent BLE scanning and student logic for admin
-  if (user?.role !== 'student') {
-    return null;
-  }
-  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords } = useAttendanceStore();
+  const { bannerMessage } = useAttendanceStore();
+  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords, fetchCourses, courses } = useAttendanceStore();
   const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
-  
+
   // Get today's classes
   const todayCourses = getTodayCourses();
-  
+
   // Debug logs
   console.log('todayCourses:', todayCourses);
   console.log('currentCourse (nearby/active class):', currentCourse);
-  
+  console.log('UI DEBUG: currentBeaconStatus:', currentBeaconStatus, 'currentCourse:', currentCourse);
+
   // Calculate attendance stats
   const totalClasses = attendanceRecords.length;
   const presentCount = attendanceRecords.filter(r => r.status === 'verified').length;
   const lateCount = attendanceRecords.filter(r => r.status === 'late').length;
   const absentCount = attendanceRecords.filter(r => r.status === 'absent').length;
-  
+
   // Start scanning when component mounts
   useEffect(() => {
     if (Platform.OS !== 'web') {
       startScanning();
     }
-    
     return () => {
       if (Platform.OS !== 'web') {
         stopScanning();
       }
     };
   }, []);
-  
+
   // Fetch attendance records when user logs in or changes
   useEffect(() => {
     if (user && typeof user.id === 'string' && user.id.length > 0) {
-      console.log('Fetching attendance for user:', user.id);
+      console.log('EFFECT: About to call fetchCourses for user:', user.id);
+      fetchCourses(user.id).then(() => {
+        console.log('DEBUG after fetchCourses: courses =', courses);
+      });
       fetchAttendanceRecords(user.id);
     }
-  }, [user?.id, fetchAttendanceRecords]);
-  
+  }, [user?.id, fetchAttendanceRecords, fetchCourses]);
+
   // Get today's date in a readable format
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -89,126 +106,140 @@ export default function HomeScreen() {
     { backgroundColor: colors.success }
   ]);
   
+  useEffect(() => {
+    console.log('UI EFFECT: currentBeaconStatus changed:', currentBeaconStatus);
+  }, [currentBeaconStatus]);
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.userInfo}>
-            <Avatar 
-              name={user?.name || 'Student'} 
-              size="medium"
-            />
-            <View style={styles.greetingContainer}>
-              <Text style={[styles.greeting, { color: colors.text }]}>
-                Hello, {user?.name?.split(' ')[0] || 'Student'}
-              </Text>
-              <Text style={[styles.date, { color: colors.textSecondary }]}>
-                {today}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.headerActions}>
-            <NotificationBell />
-            
-            <Link href="/qr-scanner" asChild>
-              <TouchableOpacity style={qrButtonStyle}>
-                <MaterialCommunityIcons name="qrcode" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            </Link>
-          </View>
+    <>
+      {!user ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
+          <Text style={{ color: 'black', fontSize: 20 }}>Please log in to continue.</Text>
         </View>
-        
-        <BeaconStatus beaconErrorReason={beaconErrorReason} />
-        
-        <AttendanceStats 
-          totalClasses={totalClasses}
-          presentCount={presentCount}
-          lateCount={lateCount}
-          absentCount={absentCount}
-        />
-        
-        {currentBeaconStatus === 'connected' && currentCourse ? (
-          <View style={styles.currentClassContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Current Class
-              </Text>
-              <View style={activePillStyle}>
-                <View style={activeDotStyle} />
-                <Text style={[styles.activeText, { color: colors.success }]}>
-                  In Progress
-                </Text>
+      ) : user.role !== 'student' ? (
+        <></>
+      ) : (
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <Banner />
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.header}>
+              <View style={styles.userInfo}>
+                <Avatar 
+                  name={user?.name || 'Student'} 
+                  size="medium"
+                />
+                <View style={styles.greetingContainer}>
+                  <Text style={[styles.greeting, { color: colors.text }]}>
+                    Hello, {user?.name?.split(' ')[0] || 'Student'}
+                  </Text>
+                  <Text style={[styles.date, { color: colors.textSecondary }]}>
+                    {today}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.headerActions}>
+                <NotificationBell />
+                
+                <Link href="/qr-scanner" asChild>
+                  <TouchableOpacity style={qrButtonStyle}>
+                    <MaterialCommunityIcons name="qrcode" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                </Link>
               </View>
             </View>
             
-            <ClassCard 
-              course={currentCourse} 
-              isActive={true} 
-              onPress={() => handleCoursePress(currentCourse.id)}
+            <BeaconStatus beaconErrorReason={beaconErrorReason} />
+            
+            <AttendanceStats 
+              totalClasses={totalClasses}
+              presentCount={presentCount}
+              lateCount={lateCount}
+              absentCount={absentCount}
             />
-          </View>
-        ) : (
-          <Card gradient elevated style={styles.noClassCard}>
-            <MaterialCommunityIcons name="clock" size={32} color={colors.primary} />
-            <Text style={[styles.noClassTitle, { color: colors.text }]}>
-              {currentBeaconStatus === 'scanning' 
-                ? 'Searching for nearby classes...' 
-                : 'No active class right now'}
-            </Text>
-            <Text style={[styles.noClassText, { color: colors.textSecondary }]}>
-              {currentBeaconStatus === 'scanning' 
-                ? 'Please make sure you are in the classroom' 
-                : 'Check your schedule for upcoming classes'}
-            </Text>
-          </Card>
-        )}
-        
-        <View style={styles.upcomingContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Today's Classes
-            </Text>
-            <TouchableOpacity 
-              style={styles.viewAllButton}
-              onPress={() => router.push('/calendar')}
-            >
-              <Feather name="calendar" size={16} color={colors.primary} />
-              <Text style={[styles.viewAllText, { color: colors.primary }]}>
-                Calendar
-              </Text>
-            </TouchableOpacity>
-          </View>
+            
+            {currentBeaconStatus === 'connected' && currentCourse ? (
+              <View style={styles.currentClassContainer}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                    Current Class
+                  </Text>
+                  <View style={activePillStyle}>
+                    <View style={activeDotStyle} />
+                    <Text style={[styles.activeText, { color: colors.success }]}>
+                      In Progress
+                    </Text>
+                  </View>
+                </View>
+                
+                <ClassCard 
+                  course={currentCourse} 
+                  isActive={true} 
+                />
+              </View>
+            ) : (
+              <Card gradient elevated style={styles.noClassCard}>
+                <MaterialCommunityIcons name="clock" size={32} color={colors.primary} />
+                <Text style={[styles.noClassTitle, { color: colors.text }]}>
+                  {currentBeaconStatus === 'scanning' 
+                    ? 'Searching for nearby classes...' 
+                    : 'No active class right now'}
+                </Text>
+                <Text style={[styles.noClassText, { color: colors.textSecondary }]}>
+                  {currentBeaconStatus === 'scanning' 
+                    ? 'Please make sure you are in the classroom' 
+                    : 'Check your schedule for upcoming classes'}
+                </Text>
+              </Card>
+            )}
+            
+            <View style={styles.upcomingContainer}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  Today's Classes
+                </Text>
+                {/* <TouchableOpacity 
+                  style={styles.viewAllButton}
+                  onPress={() => router.push('/calendar')}
+                >
+                  <Feather name="calendar" size={16} color={colors.primary} />
+                  <Text style={[styles.viewAllText, { color: colors.primary }]}>
+                    Calendar
+                  </Text>
+                </TouchableOpacity> */}
+              </View>
+              
+              {todayCourses.length > 0 ? (
+                todayCourses.map(course => (
+                  <ClassCard 
+                    key={course.id} 
+                    course={course} 
+                    isActive={currentCourse?.id === course.id}
+                    onPress={() => handleCoursePress(course.id)}
+                  />
+                ))
+              ) : (
+                <Card elevated style={styles.emptyCard}>
+                  <EmptyState
+                    icon={<MaterialCommunityIcons name="book-open" size={32} color={colors.primary} />}
+                    title="No Classes Today"
+                    message="Enjoy your free day! Check your schedule for upcoming classes."
+                    actionLabel="View All Courses"
+                    onAction={() => router.push('/courses')}
+                  />
+                </Card>
+              )}
+            </View>
+          </ScrollView>
           
-          {todayCourses.length > 0 ? (
-            todayCourses.map(course => (
-              <ClassCard 
-                key={course.id} 
-                course={course} 
-                isActive={currentCourse?.id === course.id}
-                onPress={() => handleCoursePress(course.id)}
-              />
-            ))
-          ) : (
-            <Card elevated style={styles.emptyCard}>
-              <EmptyState
-                icon={<MaterialCommunityIcons name="book-open" size={32} color={colors.primary} />}
-                title="No Classes Today"
-                message="Enjoy your free day! Check your schedule for upcoming classes."
-                actionLabel="View All Courses"
-                onAction={() => router.push('/courses')}
-              />
-            </Card>
-          )}
+          <RandomCheckPrompt />
         </View>
-      </ScrollView>
-      
-      <RandomCheckPrompt />
-    </View>
+      )}
+    </>
   );
 }
 

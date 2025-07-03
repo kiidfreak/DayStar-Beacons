@@ -1,95 +1,113 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { useAttendanceStore } from '@/store/attendanceStore';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, FlatList } from 'react-native';
+import { useAuthStore } from '@/store/authStore';
+import { CourseService } from '@/services/courseService';
+import { ClassSession } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import CalendarView from '@/components/CalendarView';
 import ClassCard from '@/components/ClassCard';
 import EmptyState from '@/components/EmptyState';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Card from '@/components/ui/Card';
 
+console.log('CALENDAR PAGE: (sidebar)');
+
 export default function CalendarScreen() {
-  const { courses, attendanceRecords } = useAttendanceStore();
+  const user = useAuthStore((state) => state.user);
+  const studentId = user?.id;
   const { colors } = useTheme();
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  
-  // Format date for comparison
-  const formatDateForComparison = (date: Date) => {
-    return date.toISOString().split('T')[0];
-  };
-  
-  // Get dates with attendance records for calendar marking
-  const datesWithRecords = attendanceRecords.map(record => new Date(record.date));
-  
-  // Get day of week for selected date
-  const getDayOfWeek = (date: Date) => {
-    return date.toLocaleDateString('en-US', { weekday: 'long' });
-  };
-  
-  // Get courses for selected day
-  const getCoursesForDay = (date: Date) => {
-    const dayOfWeek = getDayOfWeek(date);
-    return courses.filter(course => course.days?.includes(dayOfWeek));
-  };
-  
-  // Get courses for selected date
-  const coursesForSelectedDay = getCoursesForDay(selectedDate);
-  
-  // Format selected date for display
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [allSessions, setAllSessions] = useState<ClassSession[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
+
+  useEffect(() => {
+    if (!studentId) return;
+    setLoading(true);
+    setError(null);
+    CourseService.getAllSessionsForStudent(studentId)
+      .then(setAllSessions)
+      .catch((err) => setError(err.message || 'Failed to fetch sessions'))
+      .finally(() => setLoading(false));
+  }, [studentId]);
+
+  const markedDates = allSessions.map(s => new Date(s.sessionDate));
+  const sessionsForSelectedDate = allSessions.filter(
+    s => s.sessionDate.slice(0, 10) === selectedDate.toISOString().slice(0, 10)
+  );
   const formattedSelectedDate = selectedDate.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
   });
-  
-  // Debug logs
-  console.log('courses:', courses);
-  console.log('selectedDate:', selectedDate);
-  console.log('coursesForSelectedDay:', coursesForSelectedDay);
-  
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.pageTitle, { color: colors.text }]}>
-          Calendar
-        </Text>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 }}>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>Class Sessions</Text>
       </View>
-      
-      <CalendarView
-        selectedDate={selectedDate}
-        onSelectDate={setSelectedDate}
-        markedDates={datesWithRecords}
-      />
-      
-      <View style={styles.dayContainer}>
-        <Text style={[styles.dateTitle, { color: colors.text }]}>
-          {formattedSelectedDate}
-        </Text>
-        
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.coursesList}
+      <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 12,
+          }}
+          onPress={() => setShowCalendar(!showCalendar)}
         >
-          {coursesForSelectedDay.length > 0 ? (
-            coursesForSelectedDay.map(course => (
-              <ClassCard 
-                key={course.id} 
-                course={course}
-                onPress={() => {}}
-              />
-            ))
-          ) : (
-            <Card elevated style={styles.emptyCard}>
-              <EmptyState
-                icon={<MaterialCommunityIcons name="calendar" size={24} color="currentColor" />}
-                title="No Classes"
-                message={`You don't have any classes scheduled for ${formattedSelectedDate}`}
-                actionLabel="View All Courses"
-                onAction={() => {}}
-              />
-            </Card>
-          )}
-        </ScrollView>
+          <Feather name="calendar" size={20} color={colors.primary} />
+          <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>{formattedSelectedDate}</Text>
+        </TouchableOpacity>
+      </View>
+      {showCalendar && (
+        <CalendarView
+          selectedDate={selectedDate}
+          onSelectDate={date => {
+            setSelectedDate(date);
+            setShowCalendar(false);
+          }}
+          markedDates={markedDates}
+        />
+      )}
+      <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 20 }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 16, color: colors.text }}>
+          Sessions {formattedSelectedDate ? `(${formattedSelectedDate})` : ''}
+        </Text>
+        {loading && <ActivityIndicator size="large" color={colors.primary} />}
+        {error && <Text style={{ color: 'red', marginBottom: 8 }}>{error}</Text>}
+        {!loading && sessionsForSelectedDate.length > 0 ? (
+          <FlatList
+            data={sessionsForSelectedDate}
+            keyExtractor={item => item.id}
+            renderItem={({ item: session }) => (
+              <Card elevated style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>{session.course?.name || 'Course'}</Text>
+                <Text style={{ color: colors.textSecondary }}>Time: {session.startTime} - {session.endTime}</Text>
+                <Text style={{ color: colors.textSecondary }}>Location: {session.location || 'TBA'}</Text>
+                <Text style={{ color: colors.textSecondary }}>Type: {session.sessionType}</Text>
+              </Card>
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 24 }}
+          />
+        ) : !loading ? (
+          <Card elevated style={{ padding: 0, overflow: 'hidden' }}>
+            <EmptyState
+              icon={<MaterialCommunityIcons name="calendar" size={32} color={colors.primary} />}
+              title="No Sessions Found"
+              message={`No class sessions scheduled for ${formattedSelectedDate}`}
+              actionLabel="Change Date"
+              onAction={() => setShowCalendar(true)}
+            />
+          </Card>
+        ) : null}
       </View>
     </View>
   );

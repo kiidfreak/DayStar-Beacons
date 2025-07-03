@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useBeacon } from '@/hooks/useBeacon';
 import { useAttendanceStore } from '@/store/attendanceStore';
@@ -19,6 +19,10 @@ import Button from '@/components/ui/Button';
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords, fetchCourses, courses, isLoadingAttendance } = useAttendanceStore();
+  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
+  const { colors } = useTheme();
+  
   if (!user) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
@@ -34,9 +38,6 @@ export default function HomeScreen() {
       </View>
     );
   }
-  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords } = useAttendanceStore();
-  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
-  const { colors } = useTheme();
   
   // Get today's classes
   const todayCourses = getTodayCourses();
@@ -60,12 +61,13 @@ export default function HomeScreen() {
     };
   }, []);
   
-  // Fetch attendance records when user logs in or changes
+  // Fetch attendance records and courses when user logs in or changes
   useEffect(() => {
     if (user?.id) {
+      fetchCourses(user.id);
       fetchAttendanceRecords(user.id);
     }
-  }, [user?.id, fetchAttendanceRecords]);
+  }, [user?.id, fetchCourses, fetchAttendanceRecords]);
   
   // Get today's date in a readable format
   const today = new Date().toLocaleDateString('en-US', {
@@ -94,6 +96,10 @@ export default function HomeScreen() {
     styles.activeDot, 
     { backgroundColor: colors.success }
   ]);
+  
+  if (isLoadingAttendance) {
+    return <ActivityIndicator size="large" color={colors.primary} />;
+  }
   
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

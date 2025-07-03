@@ -14,7 +14,7 @@ export function useBeacon() {
   const [beaconErrorReason, setBeaconErrorReason] = useState<string | null>(null);
   const bleManager = useRef<BleManager | null>(null);
   const scanningTimeout = useRef<NodeJS.Timeout | null>(null);
-  const { setBeaconStatus: setGlobalBeaconStatus, setCurrentCourse } = useAttendanceStore();
+  const { setBeaconStatus: setGlobalBeaconStatus, setCurrentCourse, setBannerMessage } = useAttendanceStore();
   const { user } = useAuthStore();
   const attendanceLoggedRef = useRef(false);
 
@@ -112,7 +112,7 @@ export function useBeacon() {
       if (user) {
         try {
           const sessions = await AttendanceService.getTodaysSessions(user.id);
-          console.log('BLE DEBUG: Sessions fetched for user', user.id, sessions);
+          // console.log('BLE DEBUG: Sessions fetched for user', user.id, sessions);
 
           // Find the session with a matching beacon MAC
           selectedSession = sessions.find(
@@ -123,10 +123,13 @@ export function useBeacon() {
                 ((s.beacon as any).mac_address && (s.beacon as any).mac_address.toUpperCase() === beaconMac)
               )
           );
-          console.log('BLE DEBUG: Selected session:', selectedSession);
+          // console.log('BLE DEBUG: Selected session:', selectedSession);
 
           if (selectedSession) {
             sessionId = selectedSession.id;
+            // Debug: Check attendance window
+            const withinWindow = isWithinAttendanceWindow(selectedSession);
+            console.log('BLE DEBUG: isWithinAttendanceWindow:', withinWindow, 'for session:', selectedSession.id);
           }
         } catch (e) {
           console.error('Error fetching sessions for attendance:', e);
@@ -144,7 +147,7 @@ export function useBeacon() {
 
       // Ensure BLE manager is initialized right before scanning
       if (!bleManager.current) bleManager.current = new BleManager();
-      bleManager.current.startDeviceScan(null, { allowDuplicates: false }, (error, device) => {
+      bleManager.current.startDeviceScan(null, { allowDuplicates: false }, async (error, device) => {
         if (error) {
           setBeaconStatus('error');
           setBeaconErrorReason('ble-error');
@@ -157,27 +160,50 @@ export function useBeacon() {
         // }
         if (device && device.id.toUpperCase() === beaconMac) {
           setBeaconStatus('detected');
+          console.log('BLE DEBUG: Beacon detected, status set to detected');
+          // Always set the current course when beacon is detected and session is valid
+          if (selectedSession && selectedSession.course) {
+            const { courses } = useAttendanceStore.getState();
+            const matchedCourse = courses.find(c => c.id === selectedSession.course?.id);
+            setCurrentCourse(matchedCourse || selectedSession.course);
+            // console.log('BLE DEBUG: setCurrentCourse called with:', matchedCourse || selectedSession.course);
+          }
           if (!attendanceLoggedRef.current && user && sessionId) {
             // Check attendance window before logging
             if (!isWithinAttendanceWindow(selectedSession)) {
-              // console.warn('BLE DEBUG: Not within attendance window for session:', selectedSession);
               setBeaconStatus('error');
               setBeaconErrorReason('window-closed');
               setIsScanning(false);
               return;
             }
             attendanceLoggedRef.current = true;
-            // Set the current course in the global store for UI update
-            if (selectedSession && selectedSession.course) {
-              setCurrentCourse(selectedSession.course);
+            let attendanceError = null;
+            try {
+              await AttendanceService.recordAttendance(
+                sessionId,
+                user.id,
+                'ble'
+              );
+              //console.log('BLE DEBUG: Attendance logged for beacon:', beaconMac, 'user:', user.id, 'session:', sessionId, 'course:', selectedSession?.course?.code || selectedSession?.course?.id || 'unknown');
+            } catch (err) {
+              attendanceError = err;
+              console.error('Error recording attendance:', err);
+              console.log('DEBUG: error object for duplicate check:', JSON.stringify(err));
+              if (err && typeof err === 'object' && 'code' in err && (err as any).code === '23505') {
+                console.log('DEBUG: setBannerMessage called for duplicate attendance');
+                setBannerMessage('Your attendance has already been recorded.');
+              }
+            } finally {
+              setBeaconStatus('connected'); // Always set to connected, even if attendance logging fails
             }
-            AttendanceService.recordAttendance(
-              sessionId,
-              user.id,
-              'ble'
-            );
-            console.log('Attendance logged for beacon:', beaconMac, 'user:', user.id, 'session:', sessionId, 'course:', selectedSession?.course?.code || selectedSession?.course?.id || 'unknown');
+          } else {
+            // If attendance already logged, still set status to connected
+            setBeaconStatus('connected');
           }
+          // Debug: Log currentBeaconStatus and currentCourse
+          // setTimeout(() => {
+          //   console.log('BLE DEBUG: After detection - currentBeaconStatus:', beaconStatus, 'currentCourse:', selectedSession?.course);
+          // }, 500);
         }
       });
     } catch (err) {
@@ -201,14 +227,14 @@ export function useBeacon() {
     }
   };
 
-  // Auto-scan when component mounts and every minute
+  // Auto-scan when component mounts and every hour
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     const checkInterval = setInterval(() => {
       if (!isScanning) {
         startScanning();
       }
-    }, 60000);
+    }, 3600000); // every 1 hour
     // Initial scan
     startScanning();
     return () => {
@@ -233,6 +259,10 @@ export function useBeacon() {
   useEffect(() => {
     if (isScanning) attendanceLoggedRef.current = false;
   }, [isScanning]);
+
+  useEffect(() => {
+    console.log('BEACON HOOK EFFECT: beaconStatus changed:', beaconStatus);
+  }, [beaconStatus]);
 
   return {
     isScanning,

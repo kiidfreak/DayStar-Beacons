@@ -1,12 +1,14 @@
+import React from 'react';
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
-import { Stack, SplashScreen, useRouter } from "expo-router";
+import { Stack, SplashScreen, useRouter, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/hooks/useTheme";
-import { useColorScheme, Platform, StatusBar, View, ActivityIndicator } from "react-native";
+import { useColorScheme, Platform, StatusBar, View, ActivityIndicator, Text } from "react-native";
 import { useThemeStore } from "@/store/themeStore";
 import { useUniversityStore } from "@/store/universityStore";
+import { useAttendanceStore } from '@/store/attendanceStore';
 
 export const unstable_settings = {
   // Make sure the app starts with loading screen
@@ -66,6 +68,15 @@ export default function RootLayout() {
     return () => clearTimeout(fallbackTimer);
   }, []);
 
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (isReady && pathname === '/') {
+      router.replace('/(sidebar)');
+    }
+  }, [isReady, pathname]);
+
   if (!isReady) {
     console.log('Font loading/isReady:', isReady);
     return null;
@@ -74,11 +85,46 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+function Banner() {
+  const { bannerMessage, clearBannerMessage } = useAttendanceStore();
+  useEffect(() => {
+    if (bannerMessage) {
+      const timer = setTimeout(() => clearBannerMessage(), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [bannerMessage]);
+  console.log('BANNER COMPONENT (root): bannerMessage =', bannerMessage);
+  if (!bannerMessage) return null;
+  return (
+    <View style={{ position: 'absolute', top: 50, left: 0, right: 0, backgroundColor: 'red', padding: 20, zIndex: 9999 }}>
+      <Text style={{ color: 'white', textAlign: 'center' }}>{bannerMessage}</Text>
+    </View>
+  );
+}
+
 function RootLayoutNav() {
-  const { isAuthenticated, user, hydrated } = useAuthStore();
+  // Move all hooks to the top
+  const { isAuthenticated, user, hydrated, justLoggedOut, setJustLoggedOut } = useAuthStore();
   const { university } = useUniversityStore();
   const { colors, isDark } = useTheme();
   const router = useRouter();
+  const { bannerMessage } = useAttendanceStore();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'admin') {
+      router.replace('/(sidebar)/admin/approvals');
+    }
+  }, [isAuthenticated, user, router]);
+
+  useEffect(() => {
+    if (justLoggedOut) {
+      setTimeout(() => {
+        router.replace('/(auth)/select-university');
+        setJustLoggedOut(false);
+      }, 100);
+    }
+  }, [justLoggedOut]);
 
   if (!hydrated) {
     console.log('Auth store not hydrated, showing spinner');
@@ -90,16 +136,10 @@ function RootLayoutNav() {
   }
   console.log('Auth store hydrated, rendering app');
 
-  // Redirect admin users to sidebar admin UI
-  useEffect(() => {
-    if (isAuthenticated && user?.role === 'admin') {
-      router.replace('/(sidebar)/admin/approvals');
-    }
-  }, [isAuthenticated, user, router]);
-
   // Always render the default stack
   return (
     <>
+      <Banner />
       {/* Fixed status bar handling for mobile to prevent content overlap */}
       <StatusBar 
         barStyle={isDark ? "light-content" : "dark-content"}
@@ -153,43 +193,11 @@ function RootLayoutNav() {
       >
         <Stack.Screen 
           name="loading" 
-          options={{ 
-            headerShown: false,
-          }} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="(auth)" 
-          options={{ 
-            headerShown: false,
-          }} 
-        />
-        <Stack.Screen 
-          name="index" 
-          options={{ 
-            title: university?.name || "University",
-            headerShown: false,
-          }} 
-        />
-        <Stack.Screen 
-          name="courses" 
-          options={{ 
-            title: "Courses",
-            headerLargeTitle: Platform.OS === 'ios',
-          }} 
-        />
-        <Stack.Screen 
-          name="history" 
-          options={{ 
-            title: "History",
-            headerLargeTitle: Platform.OS === 'ios',
-          }} 
-        />
-        <Stack.Screen 
-          name="settings" 
-          options={{ 
-            title: "Settings",
-            headerLargeTitle: Platform.OS === 'ios',
-          }} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="qr-scanner" 
@@ -197,7 +205,6 @@ function RootLayoutNav() {
             presentation: "modal",
             title: "QR Check-in",
             headerTitleAlign: "center",
-            // Better modal presentation for mobile
             ...Platform.select({
               ios: {
                 headerLeft: () => null,
@@ -210,20 +217,6 @@ function RootLayoutNav() {
           name="course/[id]" 
           options={{ 
             title: "Course Details",
-            headerTitleAlign: "center",
-          }} 
-        />
-        <Stack.Screen 
-          name="profile" 
-          options={{ 
-            title: "My Profile",
-            headerTitleAlign: "center",
-          }} 
-        />
-        <Stack.Screen 
-          name="calendar" 
-          options={{ 
-            title: "Calendar",
             headerTitleAlign: "center",
           }} 
         />
@@ -243,9 +236,7 @@ function RootLayoutNav() {
         />
         <Stack.Screen 
           name="(sidebar)" 
-          options={{ 
-            headerShown: false,
-          }} 
+          options={{ headerShown: false }} 
         />
       </Stack>
     </>

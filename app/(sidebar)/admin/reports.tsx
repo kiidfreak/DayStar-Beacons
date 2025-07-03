@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, ScrollView } from 'react-native';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { useTheme } from '@/hooks/useTheme';
 import Card from '@/components/ui/Card';
@@ -59,9 +59,27 @@ export default function AdminReportsScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}> 
       <Text style={[styles.title, { color: colors.text }]}>Attendance Reports</Text>
       <Button title="Export as CSV" onPress={handleExportCSV} variant="primary" style={styles.exportButton} />
-      <Card elevated style={styles.card}>
-        <Text style={[styles.info, { color: colors.textSecondary }]}>Summary stats and analytics coming soon.</Text>
-      </Card>
+      {attendanceRecords.length === 0 ? (
+        <Card elevated style={styles.card}>
+          <Text style={[styles.info, { color: colors.textSecondary }]}>No attendance records found.</Text>
+        </Card>
+      ) : (
+        <ScrollView style={{ flex: 1 }}>
+          {attendanceRecords.map(record => (
+            <Card key={record.id} style={{ marginBottom: 12, padding: 12 }}>
+              <Text style={{ color: colors.text, fontWeight: 'bold' }}>
+                {record.courseName} ({record.courseCode})
+              </Text>
+              <Text style={{ color: colors.textSecondary }}>
+                Student: {record.studentId} | Status: {record.status}
+              </Text>
+              <Text style={{ color: colors.textSecondary }}>
+                Date: {record.date} | Checked in: {record.checkInTime || 'N/A'}
+              </Text>
+            </Card>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }

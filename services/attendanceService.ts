@@ -211,16 +211,13 @@ export class AttendanceService {
 
       if (error) throw error;
 
-      // Check if QR code or beacon is active
-      if (!data.qr_code_active && !data.beacon_enabled) return false;
-
       const now = new Date();
       const openTime = data.attendance_window_start ? new Date(data.attendance_window_start) : null;
       const closeTime = data.attendance_window_end ? new Date(data.attendance_window_end) : null;
 
-      // If no time windows set, consider it open if QR/beacon is active
+      // If no time windows set, consider it open
       if (!openTime && !closeTime) {
-        return data.qr_code_active || data.beacon_enabled;
+        return true;
       }
 
       // Check if current time is within attendance window
@@ -344,5 +341,45 @@ export class AttendanceService {
       },
       // Add more mock records as needed
     ];
+  }
+
+  /**
+   * Get class sessions for a specific date for a student's courses
+   */
+  static async getSessionsForDate(studentId: string, date: Date): Promise<ClassSession[]> {
+    // Get the user's enrolled courses
+    const { data: enrollments, error: enrollmentsError } = await supabase
+      .from('course_enrollments')
+      .select('course_id')
+      .eq('student_id', studentId);
+    if (enrollmentsError) throw enrollmentsError;
+    if (!enrollments || enrollments.length === 0) {
+      return [];
+    }
+    const courseIds = enrollments.map(e => e.course_id);
+
+    // Get the date range for the selected day
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+    const end = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0);
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
+
+    // Fetch sessions for that date
+    const { data: sessions, error } = await supabase
+      .from('class_sessions')
+      .select(`
+        *,
+        course:courses(
+          *,
+          instructor:users!courses_instructor_id_fkey(*)
+        ),
+        beacon:ble_beacons(*)
+      `)
+      .gte('session_date', startIso)
+      .lt('session_date', endIso)
+      .in('course_id', courseIds);
+
+    if (error) throw error;
+    return sessions || [];
   }
 } 

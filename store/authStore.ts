@@ -10,9 +10,11 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   hydrated: boolean;
+  justLoggedOut: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  setJustLoggedOut: (value: boolean) => void;
 }
 
 // Mock login function - would be replaced with actual API call
@@ -68,6 +70,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
       hydrated: false,
+      justLoggedOut: false,
       
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -104,7 +107,8 @@ export const useAuthStore = create<AuthState>()(
             user: null, 
             token: null, 
             isAuthenticated: false,
-            error: null
+            error: null,
+            justLoggedOut: true,
           });
           
         } catch (error) {
@@ -114,14 +118,17 @@ export const useAuthStore = create<AuthState>()(
             user: null, 
             token: null, 
             isAuthenticated: false,
-            error: null
+            error: null,
+            justLoggedOut: true,
           });
         }
       },
       
       clearError: () => {
         set({ error: null });
-      }
+      },
+      
+      setJustLoggedOut: (value: boolean) => set({ justLoggedOut: value }),
     }),
     {
       name: 'auth-storage',
