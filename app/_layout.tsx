@@ -4,11 +4,12 @@ import { useFonts } from "expo-font";
 import { Stack, SplashScreen, useRouter, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
-import { useTheme } from "@/hooks/useTheme";
-import { useColorScheme, Platform, StatusBar, View, ActivityIndicator, Text } from "react-native";
-import { useThemeStore } from "@/store/themeStore";
+import { useColorScheme, Platform, StatusBar, View, ActivityIndicator, Text, TouchableOpacity } from "react-native";
+import colors from '@/constants/colors';
+
 import { useUniversityStore } from "@/store/universityStore";
 import { useAttendanceStore } from '@/store/attendanceStore';
+import { Feather } from '@expo/vector-icons';
 
 export const unstable_settings = {
   // Make sure the app starts with loading screen
@@ -23,16 +24,19 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
   
+  const { isAuthenticated, hydrated, justLoggedOut } = useAuthStore();
+  const router = useRouter();
   const [isReady, setIsReady] = useState(false);
-  const systemColorScheme = useColorScheme();
-  const { isSystemTheme, setTheme } = useThemeStore();
-  
-  // Update theme based on system changes if using system theme
+
   useEffect(() => {
-    if (isSystemTheme && systemColorScheme) {
-      setTheme(systemColorScheme);
+    if (loaded && !error) {
+      // Set ready immediately when fonts are loaded
+      setIsReady(true);
+      SplashScreen.hideAsync().catch(console.error);
+      
+      // Don't navigate here - let RootLayoutNav handle navigation
     }
-  }, [systemColorScheme, isSystemTheme, setTheme]);
+  }, [loaded, error]);
 
   // Handle font loading errors
   useEffect(() => {
@@ -44,42 +48,25 @@ export default function RootLayout() {
     }
   }, [error]);
 
-  // Handle successful font loading
-  useEffect(() => {
-    if (loaded && !error) {
-      // Add a small delay to ensure everything is ready, but with timeout
-      const timer = setTimeout(() => {
-        setIsReady(true);
-        SplashScreen.hideAsync().catch(console.error);
-      }, 50); // Reduced from 100ms to 50ms
-      
-      return () => clearTimeout(timer);
-    }
-  }, [loaded, error]);
-
   // Fallback timeout to prevent infinite loading
   useEffect(() => {
     const fallbackTimer = setTimeout(() => {
       console.warn('Font loading timeout, proceeding anyway');
       setIsReady(true);
       SplashScreen.hideAsync().catch(console.error);
-    }, 7000); // 7 second fallback
+    }, 3000); // Reduced to 3 seconds
     
     return () => clearTimeout(fallbackTimer);
   }, []);
 
-  const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    if (isReady && pathname === '/') {
-      router.replace('/(sidebar)');
-    }
-  }, [isReady, pathname]);
-
   if (!isReady) {
-    console.log('Font loading/isReady:', isReady);
-    return null;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
+        <Text style={{ fontSize: 18, color: '#00AEEF' }}>Loading...</Text>
+      </View>
+    );
   }
 
   return <RootLayoutNav />;
@@ -93,48 +80,103 @@ function Banner() {
       return () => clearTimeout(timer);
     }
   }, [bannerMessage]);
-  console.log('BANNER COMPONENT (root): bannerMessage =', bannerMessage);
   if (!bannerMessage) return null;
   return (
-    <View style={{ position: 'absolute', top: 50, left: 0, right: 0, backgroundColor: 'red', padding: 20, zIndex: 9999 }}>
-      <Text style={{ color: 'white', textAlign: 'center' }}>{bannerMessage}</Text>
+    <View style={{
+      position: 'absolute',
+      top: 24,
+      left: 0,
+      right: 0,
+      backgroundColor: 'red',
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      zIndex: 9999,
+      borderRadius: 8,
+      marginHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 36,
+      maxWidth: 400,
+      alignSelf: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }}>
+      <Text
+        style={{ color: 'white', textAlign: 'center', fontSize: 13, flexShrink: 1, marginRight: 8 }}
+        numberOfLines={2}
+        ellipsizeMode="tail"
+      >
+        {bannerMessage}
+      </Text>
+      <TouchableOpacity
+        onPress={clearBannerMessage}
+        style={{ padding: 4 }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Feather name="x" size={16} color="white" />
+      </TouchableOpacity>
     </View>
   );
 }
 
 function RootLayoutNav() {
-  // Move all hooks to the top
+  // Move all hooks to the top - ALWAYS call them in the same order
   const { isAuthenticated, user, hydrated, justLoggedOut, setJustLoggedOut } = useAuthStore();
   const { university } = useUniversityStore();
-  const { colors, isDark } = useTheme();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const themeColors = colors[isDark ? 'dark' : 'light'];
   const router = useRouter();
   const { bannerMessage } = useAttendanceStore();
   const pathname = usePathname();
 
-  useEffect(() => {
-    if (isAuthenticated && user?.role === 'admin') {
-      router.replace('/(sidebar)/admin/approvals');
+  // Simple navigation logic
+  React.useEffect(() => {
+    if (hydrated) {
+      console.log('Navigation check - isAuthenticated:', isAuthenticated, 'user:', user?.id, 'pathname:', pathname);
+      
+      // Add navigation guards to prevent infinite loops
+      const currentPath = pathname || '';
+      const isOnTabs = currentPath.startsWith('/(tabs)');
+      const isOnAuth = currentPath.startsWith('/(auth)');
+      
+      if (justLoggedOut) {
+        console.log('Navigating to login after logout');
+        if (!isOnAuth) {
+          router.replace('/(auth)/login');
+        }
+      } else if (isAuthenticated && user) {
+        console.log('Navigating to tabs - user authenticated');
+        if (!isOnTabs) {
+          router.replace('/(tabs)');
+        } else {
+          console.log('Already on tabs, not navigating');
+        }
+      } else {
+        console.log('Navigating to university selection - not authenticated');
+        if (!isOnAuth) {
+          router.replace('/(auth)/select-university');
+        }
+      }
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, hydrated, justLoggedOut, router, pathname]);
 
-  useEffect(() => {
+  // Handle logout navigation
+  React.useEffect(() => {
     if (justLoggedOut) {
       setTimeout(() => {
-        router.replace('/(auth)/select-university');
-        setJustLoggedOut(false);
-      }, 100);
+        try {
+          router.replace('/(auth)/select-university');
+          setJustLoggedOut(false);
+        } catch (error) {
+          console.error('Logout navigation error:', error);
+        }
+      }, 200);
     }
-  }, [justLoggedOut]);
-
-  if (!hydrated) {
-    console.log('Auth store not hydrated, showing spinner');
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-  console.log('Auth store hydrated, rendering app');
+  }, [justLoggedOut, router, setJustLoggedOut]);
 
   // Always render the default stack
   return (
@@ -143,18 +185,18 @@ function RootLayoutNav() {
       {/* Fixed status bar handling for mobile to prevent content overlap */}
       <StatusBar 
         barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={Platform.OS === 'android' ? colors.background : undefined}
+        backgroundColor={Platform.OS === 'android' ? themeColors.background : undefined}
         translucent={false} // Changed to false to prevent content overlap
       />
       <Stack
         screenOptions={{
           headerBackTitle: "Back",
           headerStyle: {
-            backgroundColor: colors.background,
+            backgroundColor: themeColors.background,
             // Better header styling for mobile with proper safe area handling
             ...Platform.select({
               ios: {
-                shadowColor: colors.border,
+                shadowColor: themeColors.border,
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.1,
                 shadowRadius: 0,
@@ -164,7 +206,7 @@ function RootLayoutNav() {
               },
             }),
           },
-          headerTintColor: colors.primary,
+          headerTintColor: themeColors.primary,
           headerTitleStyle: {
             fontWeight: '600',
             // Better title styling for mobile
@@ -180,21 +222,18 @@ function RootLayoutNav() {
             }),
           },
           contentStyle: {
-            backgroundColor: colors.background,
+            backgroundColor: themeColors.background,
           },
-          // Better gesture handling for iOS
-          gestureEnabled: Platform.OS === 'ios',
+          // Better gesture handling - only enable for specific screens
+          gestureEnabled: false, // Disable global gestures to prevent conflicts
           animation: Platform.select({
             ios: 'slide_from_right',
             android: 'slide_from_right',
             default: 'slide_from_right',
           }),
         }}
+        initialRouteName="(auth)"
       >
-        <Stack.Screen 
-          name="loading" 
-          options={{ headerShown: false }} 
-        />
         <Stack.Screen 
           name="(auth)" 
           options={{ headerShown: false }} 
@@ -205,10 +244,10 @@ function RootLayoutNav() {
             presentation: "modal",
             title: "QR Check-in",
             headerTitleAlign: "center",
+            gestureEnabled: true, // Enable gestures for modal
             ...Platform.select({
               ios: {
                 headerLeft: () => null,
-                gestureEnabled: true,
               },
             }),
           }} 
@@ -235,8 +274,11 @@ function RootLayoutNav() {
           }} 
         />
         <Stack.Screen 
-          name="(sidebar)" 
-          options={{ headerShown: false }} 
+          name="(tabs)" 
+          options={{ 
+            headerShown: false,
+            gestureEnabled: false, // Disable gestures for tabs to prevent conflicts
+          }} 
         />
       </Stack>
     </>

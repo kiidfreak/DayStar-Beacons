@@ -1,9 +1,11 @@
 import { supabase } from '@/lib/supabase';
 import { AttendanceRecord, ClassSession, ApiResponse } from '@/types';
+import { BLEService } from './bleService';
+import { DeviceBindingService } from './deviceBindingService';
 
 export class AttendanceService {
   /**
-   * Record attendance for a class session
+   * Record attendance with device binding verification
    */
   static async recordAttendance(
     sessionId: string,
@@ -14,67 +16,103 @@ export class AttendanceService {
     deviceInfo?: any
   ): Promise<ApiResponse<AttendanceRecord>> {
     try {
-      // Fetch session and course info for denormalized fields
+      // Verify device binding first
+      const isDeviceBound = await DeviceBindingService.verifyDeviceBinding(studentId);
+      if (!isDeviceBound) {
+        throw new Error('Device binding verification failed. Please use your registered device.');
+      }
+
+      // Get device info for logging
+      const currentDeviceInfo = await DeviceBindingService.getDeviceInfo();
+      
+      // For BLE method, validate beacon
+      if (method === 'ble') {
+        // Get session beacon info
+        const { data: session, error: sessionError } = await supabase
+          .from('class_sessions')
+          .select(`
+            *,
+            beacon:ble_beacons(*)
+          `)
+          .eq('id', sessionId)
+          .single();
+
+        if (sessionError || !session) {
+          throw new Error('Session not found');
+        }
+
+        if (!session.beacon) {
+          throw new Error('No beacon assigned to this session');
+        }
+
+        // Validate beacon is in range with enrollment and window checks
+        const beaconValidation = await BLEService.validateBeaconForAttendance(
+          session.beacon.mac_address,
+          sessionId,
+          studentId
+        );
+
+        if (!beaconValidation.valid) {
+          throw new Error(beaconValidation.error || 'Beacon validation failed');
+        }
+      }
+
+      // Check if attendance already exists
+      const { data: existingAttendance, error: checkError } = await supabase
+        .from('attendance_records')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('student_id', studentId)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingAttendance) {
+        throw new Error('Attendance already recorded for this session');
+      }
+
+      // Get session and course info
       const { data: session, error: sessionError } = await supabase
         .from('class_sessions')
-        .select('id, session_date, course_id, course:courses(id, code, name)')
+        .select(`
+          *,
+          course:courses(*)
+        `)
         .eq('id', sessionId)
         .single();
-      if (sessionError) throw sessionError;
-      // Insert attendance record with denormalized fields
+
+      if (sessionError || !session) {
+        throw new Error('Session not found');
+      }
+
+      // Record attendance
       const { data, error } = await supabase
         .from('attendance_records')
         .insert({
           session_id: sessionId,
           student_id: studentId,
-          method,
-          status: 'verified', // Auto-verify
+          method: method.toUpperCase(),
           check_in_time: new Date().toISOString(),
           latitude,
           longitude,
-          device_info: deviceInfo,
-          created_at: new Date().toISOString(),
-          course_name: session.course?.name || null,
-          course_code: session.course?.code || null,
-          date: session.session_date || new Date().toISOString().split('T')[0],
+          device_info: {
+            ...currentDeviceInfo,
+            ...deviceInfo
+          },
+          course_name: session.course?.name || 'Unknown Course',
+          course_code: session.course?.code || 'N/A',
+          date: new Date().toISOString().split('T')[0],
+          status: 'verified',
         })
-        .select(`
-          *,
-          session:class_sessions(
-            *,
-            course:courses(
-              code,
-              name
-            )
-          )
-        `)
+        .select()
         .single();
 
       if (error) throw error;
 
-      // Transform database record to app format
-      const transformedRecord: AttendanceRecord = {
-        id: data.id,
-        sessionId: data.session_id,
-        studentId: data.student_id,
-        method: data.method,
-        status: data.status,
-        checkInTime: data.check_in_time,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        locationAccuracy: data.location_accuracy,
-        deviceInfo: data.device_info,
-        verifiedBy: data.verified_by,
-        verifiedAt: data.verified_at,
-        courseName: data.course_name || data.session?.course?.name || 'Unknown Course',
-        courseCode: data.course_code || data.session?.course?.code || 'UNKNOWN',
-        date: data.date || data.session?.session_date || new Date().toISOString().split('T')[0],
-        createdAt: data.created_at,
-        session: data.session
-      };
-
       return {
-        data: transformedRecord,
+        data,
         message: 'Attendance recorded successfully'
       };
     } catch (error) {
@@ -92,23 +130,22 @@ export class AttendanceService {
     offset: number = 0
   ): Promise<AttendanceRecord[]> {
     try {
+      console.log('AttendanceService: Fetching attendance for student:', studentId);
+      
+      // Try a simple query first
       const { data, error } = await supabase
         .from('attendance_records')
-        .select(`
-          *,
-          session:class_sessions(
-            *,
-            course:courses(
-              code,
-              name
-            )
-          )
-        `)
+        .select('*')
         .eq('student_id', studentId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (error) throw error;
+      if (error) {
+        console.error('AttendanceService: Database error:', error);
+        throw error;
+      }
+      
+      console.log('AttendanceService: Raw data received:', data?.length || 0);
 
       return data?.map((record: any) => ({
         id: record.id,
@@ -123,11 +160,11 @@ export class AttendanceService {
         deviceInfo: record.device_info,
         verifiedBy: record.verified_by,
         verifiedAt: record.verified_at,
-        courseName: record.session?.course?.name || 'Unknown Course',
-        courseCode: record.session?.course?.code || 'UNKNOWN',
-        date: record.session?.session_date || new Date().toISOString().split('T')[0],
+        courseName: record.course_name || 'Unknown Course',
+        courseCode: record.course_code || 'UNKNOWN',
+        date: record.date || new Date().toISOString().split('T')[0],
         createdAt: record.created_at,
-        session: record.session
+        session: undefined
       })) || [];
     } catch (error) {
       console.error('Error fetching student attendance:', error);
@@ -140,11 +177,12 @@ export class AttendanceService {
    */
   static async getTodaysSessions(studentId: string): Promise<ClassSession[]> {
     try {
-      // Get the user's enrolled courses
+      // Get the user's active enrolled courses
       const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('course_enrollments')
+        .from('student_course_enrollments')
         .select('course_id')
-        .eq('student_id', studentId);
+        .eq('student_id', studentId)
+        .eq('status', 'active');
       if (enrollmentsError) throw enrollmentsError;
       if (!enrollments || enrollments.length === 0) {
         return [];
@@ -166,8 +204,7 @@ export class AttendanceService {
           course:courses(
             *,
             instructor:users!courses_instructor_id_fkey(*)
-          ),
-          beacon:ble_beacons(*)
+          )
         `)
         .gte('session_date', startIso)
         .lt('session_date', endIso)
@@ -250,12 +287,12 @@ export class AttendanceService {
     pendingVerifications: number;
   }> {
     try {
-      // Get total enrolled courses
+      // Get total active enrolled courses
       const { data: enrollments, error: enrollmentError } = await supabase
-        .from('course_enrollments')
+        .from('student_course_enrollments')
         .select('course_id')
         .eq('student_id', studentId)
-        .eq('status', 'approved');
+        .eq('status', 'active');
 
       if (enrollmentError) throw enrollmentError;
 
@@ -347,11 +384,12 @@ export class AttendanceService {
    * Get class sessions for a specific date for a student's courses
    */
   static async getSessionsForDate(studentId: string, date: Date): Promise<ClassSession[]> {
-    // Get the user's enrolled courses
+    // Get the user's active enrolled courses
     const { data: enrollments, error: enrollmentsError } = await supabase
-      .from('course_enrollments')
+      .from('student_course_enrollments')
       .select('course_id')
-      .eq('student_id', studentId);
+      .eq('student_id', studentId)
+      .eq('status', 'active');
     if (enrollmentsError) throw enrollmentsError;
     if (!enrollments || enrollments.length === 0) {
       return [];
@@ -372,8 +410,7 @@ export class AttendanceService {
         course:courses(
           *,
           instructor:users!courses_instructor_id_fkey(*)
-        ),
-        beacon:ble_beacons(*)
+        )
       `)
       .gte('session_date', startIso)
       .lt('session_date', endIso)
@@ -381,5 +418,65 @@ export class AttendanceService {
 
     if (error) throw error;
     return sessions || [];
+  }
+
+  /**
+   * Get all sessions for a specific beacon MAC address (for beacon detection)
+   */
+  static async getSessionsForBeacon(beaconMac: string): Promise<ClassSession[]> {
+    try {
+      // Get today's date range (local time)
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+
+      // Get all sessions for the beacon on today's date
+      const { data, error } = await supabase
+        .from('class_sessions')
+        .select(`
+          *,
+          course:courses(
+            *,
+            instructor:users!courses_instructor_id_fkey(*)
+          ),
+          beacon:ble_beacons(*)
+        `)
+        .gte('session_date', startIso)
+        .lt('session_date', endIso);
+
+      if (error) throw error;
+
+      // Filter sessions that match the beacon MAC
+      const matchingSessions = data?.filter((session: any) => {
+        const sessionBeaconMac = session.beacon?.mac_address || session.beacon?.macAddress;
+        return sessionBeaconMac && sessionBeaconMac.toUpperCase() === beaconMac.toUpperCase();
+      }) || [];
+
+      return matchingSessions.map((session: any) => ({
+        id: session.id,
+        courseId: session.course_id,
+        course: session.course,
+        instructorId: session.course?.instructor_id,
+        instructor: session.course?.instructor,
+        sessionDate: session.session_date,
+        startTime: session.start_time,
+        endTime: session.end_time,
+        location: session.location,
+        sessionType: session.session_type,
+        qrCodeActive: session.qr_code_active,
+        qrCodeExpiresAt: session.qr_code_expires_at,
+        beaconEnabled: session.beacon_enabled,
+        beaconId: session.beacon_id,
+        beacon: session.beacon,
+        attendanceWindowStart: session.attendance_window_start,
+        attendanceWindowEnd: session.attendance_window_end,
+        createdAt: session.created_at
+      }));
+    } catch (error) {
+      console.error('Error fetching sessions for beacon:', error);
+      throw error;
+    }
   }
 } 

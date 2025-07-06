@@ -1,289 +1,298 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
+  StyleSheet, 
   TextInput, 
   TouchableOpacity, 
-  StyleSheet, 
+  ScrollView, 
+  Alert, 
   KeyboardAvoidingView, 
   Platform,
-  ScrollView,
-  Alert,
-  SafeAreaView
+  Dimensions 
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
-import { useUniversityStore } from '@/store/universityStore';
 import { useTheme } from '@/hooks/useTheme';
-import { Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
 import Logo from '@/components/ui/Logo';
-import globalStyles from '@/styles/global';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function LoginScreen() {
-  const router = useRouter();
-  const { login, isLoading, error, clearError, isAuthenticated } = useAuthStore();
-  const { university, clearUniversity } = useUniversityStore();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
   const { colors } = useTheme();
-  const [email, setEmail] = useState('student@uni.edu');
-  const [password, setPassword] = useState('password');
-  
-  // Navigate to home when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.replace('/');
-    }
-  }, [isAuthenticated, router]);
-  
-  // If no university selected, redirect to university selection
-  useEffect(() => {
-    if (!university) {
-      router.replace('/(auth)/select-university');
-    }
-  }, [university, router]);
-  
+  const { login } = useAuthStore();
+  const router = useRouter();
+
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password');
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
+
+    console.log('Starting login process for:', email);
+    setIsLoading(true);
     
     try {
-      await login(email, password);
-    } catch (err) {
-      // Error is handled in the store
+      await login(email.trim(), password);
+      
+      // Double-check that there's no error before navigating
+      const { error } = useAuthStore.getState();
+      if (error) {
+        console.log('Login error detected, not navigating:', error);
+        Alert.alert('Login Failed', 'Invalid email or password. Please try again.');
+        return;
+      }
+      
+      // Only navigate on successful login
+      console.log('Login successful, navigating to tabs');
+      setTimeout(() => {
+        router.replace('/(tabs)');
+      }, 100);
+    } catch (error) {
+      console.error('Login failed, staying on login screen:', error);
+      Alert.alert('Login Failed', 'Invalid email or password. Please try again.');
+      // Don't navigate anywhere on login failure
+    } finally {
+      console.log('Login process completed, setting loading to false');
+      setIsLoading(false);
     }
   };
-  
-  const handleBackToUniversitySelection = () => {
-    clearUniversity();
-    router.replace('/(auth)/select-university');
+
+  const handleForgotPassword = () => {
+    Alert.alert(
+      'Reset Password',
+      'Please contact your university administrator to reset your password.',
+      [{ text: 'OK' }]
+    );
   };
-  
-  // Clear any errors when component unmounts
-  React.useEffect(() => {
-    return () => {
-      clearError();
-    };
-  }, []);
-  
+
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <KeyboardAvoidingView 
+      style={[styles.container, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          contentInsetAdjustmentBehavior="automatic"
-        >
-          <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={handleBackToUniversitySelection}
-            >
-              <Feather name="arrow-left" size={24} color={colors.primary} />
-            </TouchableOpacity>
-            <Logo size="large" showTagline={true} />
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Sign in to {university?.name || 'your university'}
-            </Text>
-          </View>
-          
-          <View style={styles.formContainer}>
-            {error ? (
-              <View style={[styles.errorContainer, { backgroundColor: `${colors.error}15` }]}>
-                <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Logo size="large" />
+          <Text style={[styles.title, { color: colors.text }]}>
+            Welcome Back
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Sign in to your university account
+          </Text>
+        </View>
+
+        {/* Login Form */}
+        <Card elevated style={[styles.formCard, { backgroundColor: colors.card }] as any}>
+          <View style={styles.form}>
+            {/* Email Input */}
+            <View style={styles.inputContainer}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>
+                Email Address
+              </Text>
+              <View style={[styles.inputWrapper, { backgroundColor: colors.background }]}>
+                <MaterialCommunityIcons 
+                  name="email-outline" 
+                  size={20} 
+                  color={colors.textSecondary} 
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.textInput, { color: colors.text }]}
+                  placeholder="Enter your email"
+                  placeholderTextColor={colors.textSecondary}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
               </View>
-            ) : null}
-            
-            <View style={[styles.demoCredentialsContainer, { 
-              backgroundColor: `${colors.primary}10`,
-              borderColor: `${colors.primary}30`
-            }]}>
-              <Text style={[styles.demoCredentialsTitle, { color: colors.primary }]}>
-                Demo Credentials
-              </Text>
-              <Text style={[styles.demoCredentialsText, { color: colors.primary }]}>
-                Email: student@uni.edu
-              </Text>
-              <Text style={[styles.demoCredentialsText, { color: colors.primary }]}>
-                Password: password
-              </Text>
             </View>
-            
-            <View style={[styles.inputContainer, { 
-              backgroundColor: colors.card,
-              borderColor: colors.border
-            }]}>
-              <Feather name="mail" size={24} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Email or Student ID"
-                placeholderTextColor={colors.textSecondary}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
+
+            {/* Password Input */}
+            <View style={styles.inputContainer}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>
+                Password
+              </Text>
+              <View style={[styles.inputWrapper, { backgroundColor: colors.background }]}>
+                <MaterialCommunityIcons 
+                  name="lock-outline" 
+                  size={20} 
+                  color={colors.textSecondary} 
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.textInput, { color: colors.text }]}
+                  placeholder="Enter your password"
+                  placeholderTextColor={colors.textSecondary}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={styles.passwordToggle}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <MaterialCommunityIcons 
+                    name={showPassword ? "eye-off" : "eye"} 
+                    size={20} 
+                    color={colors.textSecondary} 
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
-            
-            <View style={[styles.inputContainer, { 
-              backgroundColor: colors.card,
-              borderColor: colors.border
-            }]}>
-              <Feather name="lock" size={24} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Password"
-                placeholderTextColor={colors.textSecondary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </View>
-            
-            <TouchableOpacity style={styles.forgotPassword}>
+
+            {/* Forgot Password */}
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={handleForgotPassword}
+            >
               <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
                 Forgot Password?
               </Text>
             </TouchableOpacity>
-            
+
+            {/* Login Button */}
             <Button
-              title="Sign In"
+              title={isLoading ? "Signing In..." : "Sign In"}
               onPress={handleLogin}
-              isLoading={isLoading}
-              variant="primary"
-              size="large"
+              disabled={isLoading}
               style={styles.loginButton}
             />
           </View>
-          
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-              Don't have an account?
-            </Text>
+        </Card>
+
+        {/* Sign Up Link */}
+        <View style={styles.signupContainer}>
+          <Text style={[styles.signupText, { color: colors.textSecondary }]}>
+            Don't have an account?{' '}
+          </Text>
+          <Link href="/(auth)/register" asChild>
             <TouchableOpacity>
-              <Text style={[styles.signUpText, { color: colors.primary }]}>
-                Contact Administrator
+              <Text style={[styles.signupLink, { color: colors.primary }]}>
+                Sign Up
               </Text>
             </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </Link>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+            Secure attendance tracking for universities
+          </Text>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   container: {
-    flex: 1,
-  },
-  scrollView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-    // Add extra top padding to prevent content from being covered
-    paddingTop: Platform.select({
-      ios: 40,
-      android: 60,
-    }),
+    paddingHorizontal: 20,
+    paddingTop: screenHeight * 0.1,
+    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
     marginBottom: 40,
-    position: 'relative',
   },
-  backButton: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    padding: 10,
-    zIndex: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  formContainer: {
-    width: '100%',
-  },
-  errorContainer: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  demoCredentialsContainer: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    borderWidth: 1,
-  },
-  demoCredentialsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  title: {
+    fontSize: screenWidth > 400 ? 32 : 28,
+    fontWeight: '700',
+    marginTop: 24,
     marginBottom: 8,
     textAlign: 'center',
   },
-  demoCredentialsText: {
-    fontSize: 14,
-    fontWeight: '500',
+  subtitle: {
+    fontSize: 16,
     textAlign: 'center',
-    marginBottom: 4,
+    lineHeight: 22,
+  },
+  formCard: {
+    padding: 24,
+    borderRadius: 16,
+    marginBottom: 24,
+  },
+  form: {
+    gap: 20,
   },
   inputContainer: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingVertical: 12,
     borderWidth: 1,
-    height: 56,
+    borderColor: 'rgba(0,0,0,0.1)',
   },
-  input: {
+  inputIcon: {
+    marginRight: 12,
+  },
+  textInput: {
     flex: 1,
-    marginLeft: 12,
     fontSize: 16,
+  },
+  passwordToggle: {
+    padding: 4,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    paddingVertical: 8,
   },
   forgotPasswordText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   loginButton: {
-    marginBottom: 24,
+    marginTop: 8,
   },
-  footer: {
+  signupContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-    paddingBottom: Platform.select({
-      ios: 20,
-      android: 40,
-    }),
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  signupText: {
+    fontSize: 16,
+  },
+  signupLink: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  footer: {
+    alignItems: 'center',
   },
   footerText: {
     fontSize: 14,
-  },
-  signUpText: {
-    fontSize: 14,
-    fontWeight: '600',
+    textAlign: 'center',
+    opacity: 0.7,
   },
 });

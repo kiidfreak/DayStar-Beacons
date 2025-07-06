@@ -28,6 +28,7 @@ interface AttendanceState {
   fetchCourses: (studentId: string) => Promise<void>;
   fetchAttendanceRecords: (studentId: string) => Promise<void>;
   setAttendanceRecords: (records: AttendanceRecord[]) => void;
+  setCourses: (courses: Course[]) => void;
   fetchAllAttendanceRecords: () => Promise<void>;
   setBannerMessage: (msg: string | null) => void;
   clearBannerMessage: () => void;
@@ -47,9 +48,16 @@ export const useAttendanceStore = create<AttendanceState>()(
       attendanceError: null,
       bannerMessage: null,
       
-      setBeaconStatus: (status) => set({ currentBeaconStatus: status }),
+      setBeaconStatus: (status) => {
+        const currentStatus = get().currentBeaconStatus;
+        if (currentStatus !== status) {
+          set({ currentBeaconStatus: status });
+        }
+      },
       
-      setCurrentCourse: (course) => set({ currentCourse: course }),
+      setCurrentCourse: (course) => {
+        set({ currentCourse: course });
+      },
       
       logAttendance: (record) => {
         const newRecord: AttendanceRecord = {
@@ -95,28 +103,34 @@ export const useAttendanceStore = create<AttendanceState>()(
       },
       
       fetchCourses: async (studentId) => {
+        console.log('Starting to fetch courses for student:', studentId);
         set({ isLoadingCourses: true, coursesError: null });
         try {
           const courses = await CourseService.getStudentCourses(studentId);
-          console.log('DEBUG fetchCourses (store): fetched courses =', courses);
+          console.log('Successfully fetched courses:', courses.length);
           set({ courses, isLoadingCourses: false });
         } catch (error: any) {
-          console.error('DEBUG fetchCourses (store): error =', error);
+          console.error('Error fetching courses:', error);
           set({ coursesError: error.message || 'Failed to fetch courses', isLoadingCourses: false });
         }
       },
       
       fetchAttendanceRecords: async (studentId) => {
+        console.log('Starting to fetch attendance records for student:', studentId);
         set({ isLoadingAttendance: true, attendanceError: null });
         try {
           const attendanceRecords = await AttendanceService.getStudentAttendance(studentId);
+          console.log('Successfully fetched attendance records:', attendanceRecords.length);
           set({ attendanceRecords, isLoadingAttendance: false });
         } catch (error: any) {
+          console.error('Error fetching attendance records:', error);
           set({ attendanceError: error.message || 'Failed to fetch attendance records', isLoadingAttendance: false });
         }
       },
       
       setAttendanceRecords: (records) => set({ attendanceRecords: records }),
+      
+      setCourses: (courses) => set({ courses }),
       
       fetchAllAttendanceRecords: async () => {
         set({ isLoadingAttendance: true, attendanceError: null });

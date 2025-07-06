@@ -89,7 +89,7 @@ export default function SelectUniversityScreen() {
   // Handle university selection
   const handleSelectUniversity = (university: typeof universities[0]) => {
     setUniversity(university);
-    router.push('/login');
+    router.push('/(auth)/login');
   };
   
   const clearSearch = () => {

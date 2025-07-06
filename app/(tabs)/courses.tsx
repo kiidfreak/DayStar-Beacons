@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/authStore';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import colors from '@/constants/colors';
 
-export default function HistoryScreen() {
+export default function CoursesScreen() {
   const { user } = useAuthStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -40,17 +40,17 @@ export default function HistoryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* History Section */}
-        <View style={[styles.historyCard, { backgroundColor: themeColors.card }]}>
+        {/* Courses Section */}
+        <View style={[styles.coursesCard, { backgroundColor: themeColors.card }]}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="history" size={24} color={themeColors.primary} />
+            <MaterialCommunityIcons name="book-open" size={24} color={themeColors.primary} />
             <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
-              Attendance History
+              My Courses
             </Text>
           </View>
           
-          <Text style={[styles.historyMessage, { color: themeColors.textSecondary }]}>
-            Your attendance history and records will be displayed here. Track your attendance patterns and view detailed reports.
+          <Text style={[styles.coursesMessage, { color: themeColors.textSecondary }]}>
+            Course management features will be available soon. You can view your enrolled courses and manage your schedule here.
           </Text>
         </View>
 
@@ -66,10 +66,10 @@ export default function HistoryScreen() {
 
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: themeColors.card }]}
-            onPress={() => router.push('/(tabs)/courses')}
+            onPress={() => router.push('/(tabs)/history')}
           >
-            <Ionicons name="book" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>Courses</Text>
+            <Ionicons name="time" size={24} color={themeColors.primary} />
+            <Text style={[styles.actionText, { color: themeColors.text }]}>History</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -83,12 +83,12 @@ export default function HistoryScreen() {
 
         {/* Coming Soon */}
         <View style={[styles.comingSoonCard, { backgroundColor: themeColors.card }]}>
-          <MaterialCommunityIcons name="chart-line" size={32} color={themeColors.primary} />
+          <MaterialCommunityIcons name="rocket-launch" size={32} color={themeColors.primary} />
           <Text style={[styles.comingSoonTitle, { color: themeColors.text }]}>
-            History Features Coming Soon
+            Course Features Coming Soon
           </Text>
           <Text style={[styles.comingSoonMessage, { color: themeColors.textSecondary }]}>
-            We're working on bringing you comprehensive attendance history with detailed analytics and reporting features.
+            We're working on bringing you full course management capabilities including enrollment, schedules, and attendance tracking.
           </Text>
         </View>
       </ScrollView>
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  historyCard: {
+  coursesCard: {
     padding: 24,
     borderRadius: 16,
     marginBottom: 24,
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 12,
   },
-  historyMessage: {
+  coursesMessage: {
     fontSize: 16,
     lineHeight: 22,
   },
@@ -186,4 +186,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-});
+}); 

@@ -1,245 +1,103 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
-import { Link, useRouter } from 'expo-router';
-import { useBeacon } from '@/hooks/useBeacon';
-import { useAttendanceStore } from '@/store/attendanceStore';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
-import { useTheme } from '@/hooks/useTheme';
-import BeaconStatus from '@/components/BeaconStatus';
-import ClassCard from '@/components/ClassCard';
-import RandomCheckPrompt from '@/components/RandomCheckPrompt';
-import NotificationBell from '@/components/NotificationBell';
-import AttendanceStats from '@/components/AttendanceStats';
-import EmptyState from '@/components/EmptyState';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
-import Avatar from '@/components/ui/Avatar';
-import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
-
-function Banner() {
-  const { bannerMessage, clearBannerMessage } = useAttendanceStore();
-  useEffect(() => {
-    if (bannerMessage) {
-      const timer = setTimeout(() => clearBannerMessage(), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [bannerMessage]);
-  console.log('BANNER COMPONENT: bannerMessage =', bannerMessage);
-  if (!bannerMessage) return null;
-  return (
-    <View style={{ position: 'absolute', top: 50, left: 0, right: 0, backgroundColor: 'red', padding: 20, zIndex: 9999 }}>
-      <Text style={{ color: 'white', textAlign: 'center' }}>{bannerMessage}</Text>
-    </View>
-  );
-}
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import colors from '@/constants/colors';
 
 export default function HomeScreen() {
-  const router = useRouter();
   const { user } = useAuthStore();
-  const { colors } = useTheme();
-  const { bannerMessage } = useAttendanceStore();
-  const { currentCourse, currentBeaconStatus, getTodayCourses, attendanceRecords, fetchAttendanceRecords, fetchCourses, courses } = useAttendanceStore();
-  const { isScanning, startScanning, stopScanning, beaconErrorReason } = useBeacon();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const themeColors = colors[isDark ? 'dark' : 'light'];
+  const router = useRouter();
 
-  // Get today's classes
-  const todayCourses = getTodayCourses();
+  console.log('HomeScreen - rendering with user:', user?.id);
 
-  // Debug logs
-  console.log('todayCourses:', todayCourses);
-  console.log('currentCourse (nearby/active class):', currentCourse);
-  console.log('UI DEBUG: currentBeaconStatus:', currentBeaconStatus, 'currentCourse:', currentCourse);
-
-  // Calculate attendance stats
-  const totalClasses = attendanceRecords.length;
-  const presentCount = attendanceRecords.filter(r => r.status === 'verified').length;
-  const lateCount = attendanceRecords.filter(r => r.status === 'late').length;
-  const absentCount = attendanceRecords.filter(r => r.status === 'absent').length;
-
-  // Start scanning when component mounts
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      startScanning();
-    }
-    return () => {
-      if (Platform.OS !== 'web') {
-        stopScanning();
-      }
-    };
-  }, []);
-
-  // Fetch attendance records when user logs in or changes
-  useEffect(() => {
-    if (user && typeof user.id === 'string' && user.id.length > 0) {
-      console.log('EFFECT: About to call fetchCourses for user:', user.id);
-      fetchCourses(user.id).then(() => {
-        console.log('DEBUG after fetchCourses: courses =', courses);
-      });
-      fetchAttendanceRecords(user.id);
-    }
-  }, [user?.id, fetchAttendanceRecords, fetchCourses]);
-
-  // Get today's date in a readable format
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
-  
-  // Navigate to course details
-  const handleCoursePress = (courseId: string) => {
-    router.push(`/course/${courseId}`);
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
   };
-  
-  // Safely create styles for web compatibility
-  const qrButtonStyle = StyleSheet.flatten([
-    styles.qrButton, 
-    { backgroundColor: colors.card, borderColor: colors.border }
-  ]);
-  
-  const activePillStyle = StyleSheet.flatten([
-    styles.activePill, 
-    { backgroundColor: `${colors.success}20` }
-  ]);
-  
-  const activeDotStyle = StyleSheet.flatten([
-    styles.activeDot, 
-    { backgroundColor: colors.success }
-  ]);
-  
-  useEffect(() => {
-    console.log('UI EFFECT: currentBeaconStatus changed:', currentBeaconStatus);
-  }, [currentBeaconStatus]);
+
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case 'scan':
+        router.push('/qr-scanner');
+        break;
+      case 'courses':
+        router.push('/(tabs)/courses');
+        break;
+      case 'history':
+        router.push('/(tabs)/history');
+        break;
+      case 'settings':
+        router.push('/(tabs)/settings');
+        break;
+    }
+  };
 
   return (
-    <>
-      {!user ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
-          <Text style={{ color: 'black', fontSize: 20 }}>Please log in to continue.</Text>
-        </View>
-      ) : user.role !== 'student' ? (
-        <></>
-      ) : (
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <Banner />
-          <ScrollView 
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Welcome Header */}
+        <View style={styles.welcomeHeader}>
+          <View style={styles.welcomeTextContainer}>
+            <Text style={[styles.greeting, { color: themeColors.textSecondary }]}>
+              {getGreeting()},
+            </Text>
+            <Text style={[styles.welcomeName, { color: themeColors.text }]}>
+              {user?.firstName || 'Student'}!
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={[styles.profileButton, { backgroundColor: themeColors.card }]}
+            onPress={() => handleQuickAction('settings')}
           >
-            <View style={styles.header}>
-              <View style={styles.userInfo}>
-                <Avatar 
-                  name={user?.name || 'Student'} 
-                  size="medium"
-                />
-                <View style={styles.greetingContainer}>
-                  <Text style={[styles.greeting, { color: colors.text }]}>
-                    Hello, {user?.name?.split(' ')[0] || 'Student'}
-                  </Text>
-                  <Text style={[styles.date, { color: colors.textSecondary }]}>
-                    {today}
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.headerActions}>
-                <NotificationBell />
-                
-                <Link href="/qr-scanner" asChild>
-                  <TouchableOpacity style={qrButtonStyle}>
-                    <MaterialCommunityIcons name="qrcode" size={20} color={colors.primary} />
-                  </TouchableOpacity>
-                </Link>
-              </View>
-            </View>
-            
-            <BeaconStatus beaconErrorReason={beaconErrorReason} />
-            
-            <AttendanceStats 
-              totalClasses={totalClasses}
-              presentCount={presentCount}
-              lateCount={lateCount}
-              absentCount={absentCount}
-            />
-            
-            {currentBeaconStatus === 'connected' && currentCourse ? (
-              <View style={styles.currentClassContainer}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                    Current Class
-                  </Text>
-                  <View style={activePillStyle}>
-                    <View style={activeDotStyle} />
-                    <Text style={[styles.activeText, { color: colors.success }]}>
-                      In Progress
-                    </Text>
-                  </View>
-                </View>
-                
-                <ClassCard 
-                  course={currentCourse} 
-                  isActive={true} 
-                />
-              </View>
-            ) : (
-              <Card gradient elevated style={styles.noClassCard}>
-                <MaterialCommunityIcons name="clock" size={32} color={colors.primary} />
-                <Text style={[styles.noClassTitle, { color: colors.text }]}>
-                  {currentBeaconStatus === 'scanning' 
-                    ? 'Searching for nearby classes...' 
-                    : 'No active class right now'}
-                </Text>
-                <Text style={[styles.noClassText, { color: colors.textSecondary }]}>
-                  {currentBeaconStatus === 'scanning' 
-                    ? 'Please make sure you are in the classroom' 
-                    : 'Check your schedule for upcoming classes'}
-                </Text>
-              </Card>
-            )}
-            
-            <View style={styles.upcomingContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                  Today's Classes
-                </Text>
-                {/* <TouchableOpacity 
-                  style={styles.viewAllButton}
-                  onPress={() => router.push('/calendar')}
-                >
-                  <Feather name="calendar" size={16} color={colors.primary} />
-                  <Text style={[styles.viewAllText, { color: colors.primary }]}>
-                    Calendar
-                  </Text>
-                </TouchableOpacity> */}
-              </View>
-              
-              {todayCourses.length > 0 ? (
-                todayCourses.map(course => (
-                  <ClassCard 
-                    key={course.id} 
-                    course={course} 
-                    isActive={currentCourse?.id === course.id}
-                    onPress={() => handleCoursePress(course.id)}
-                  />
-                ))
-              ) : (
-                <Card elevated style={styles.emptyCard}>
-                  <EmptyState
-                    icon={<MaterialCommunityIcons name="book-open" size={32} color={colors.primary} />}
-                    title="No Classes Today"
-                    message="Enjoy your free day! Check your schedule for upcoming classes."
-                    actionLabel="View All Courses"
-                    onAction={() => router.push('/courses')}
-                  />
-                </Card>
-              )}
-            </View>
-          </ScrollView>
-          
-          <RandomCheckPrompt />
+            <MaterialCommunityIcons name="account" size={24} color={themeColors.primary} />
+          </TouchableOpacity>
         </View>
-      )}
-    </>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            onPress={() => handleQuickAction('scan')}
+          >
+            <Ionicons name="qr-code" size={24} color={themeColors.primary} />
+            <Text style={[styles.actionText, { color: themeColors.text }]}>Scan QR Code</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            onPress={() => handleQuickAction('courses')}
+          >
+            <Ionicons name="book" size={24} color={themeColors.primary} />
+            <Text style={[styles.actionText, { color: themeColors.text }]}>View Courses</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            onPress={() => handleQuickAction('history')}
+          >
+            <Ionicons name="time" size={24} color={themeColors.primary} />
+            <Text style={[styles.actionText, { color: themeColors.text }]}>Attendance History</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Welcome Message */}
+        <View style={[styles.welcomeCard, { backgroundColor: themeColors.card }]}>
+          <MaterialCommunityIcons name="school" size={32} color={themeColors.primary} />
+          <Text style={[styles.welcomeTitle, { color: themeColors.text }]}>
+            Welcome to Daystar University
+          </Text>
+          <Text style={[styles.welcomeMessage, { color: themeColors.textSecondary }]}>
+            The app is working! You can now navigate between tabs.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -254,100 +112,64 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 32,
   },
-  header: {
+  welcomeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  greetingContainer: {
-    marginLeft: 12,
+  welcomeTextContainer: {
+    flex: 1,
   },
   greeting: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 16,
     marginBottom: 4,
   },
-  date: {
-    fontSize: 14,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  qrButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  currentClassContainer: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
+  welcomeName: {
+    fontSize: 24,
     fontWeight: '700',
   },
-  activePill: {
+  profileButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 6,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  activeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  noClassCard: {
-    alignItems: 'center',
-    padding: 24,
+    justifyContent: 'space-between',
     marginBottom: 24,
+    gap: 12,
   },
-  noClassTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+  actionButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  welcomeCard: {
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  welcomeTitle: {
+    fontSize: 20,
+    fontWeight: '700',
     marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
   },
-  noClassText: {
-    fontSize: 14,
+  welcomeMessage: {
+    fontSize: 16,
     textAlign: 'center',
+    lineHeight: 22,
   },
-  upcomingContainer: {
-    marginBottom: 16,
-  },
-  viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  emptyCard: {
-    padding: 0,
-    overflow: 'hidden',
-  },
-});
+}); 

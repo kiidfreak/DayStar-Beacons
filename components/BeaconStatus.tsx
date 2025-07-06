@@ -1,122 +1,135 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
-import { useAttendanceStore } from '@/store/attendanceStore';
+import React from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
-import { Feather } from '@expo/vector-icons';
+import { useAttendanceStore } from '@/store/attendanceStore';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Card from '@/components/ui/Card';
 
-export default function BeaconStatus({ beaconErrorReason }: { beaconErrorReason?: string }) {
-  const { currentBeaconStatus } = useAttendanceStore();
+const { width: screenWidth } = Dimensions.get('window');
+
+interface BeaconStatusProps {
+  beaconErrorReason?: string;
+}
+
+export default function BeaconStatus({ beaconErrorReason }: BeaconStatusProps) {
   const { colors } = useTheme();
-  const pulseAnim = React.useRef(new Animated.Value(1)).current;
-  
-  useEffect(() => {
-    if (currentBeaconStatus === 'scanning') {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.2,
-            duration: 1000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [currentBeaconStatus, pulseAnim]);
-  
-  const getStatusInfo = () => {
+  const { currentBeaconStatus } = useAttendanceStore();
+
+  const getStatusConfig = () => {
     switch (currentBeaconStatus) {
-      case 'scanning':
-        return {
-          icon: <Feather name="wifi" size={24} color={colors.primary} />,
-          text: "Scanning for beacons...",
-          color: colors.primary
-        };
-      case 'detected':
-        return {
-          icon: <Feather name="wifi" size={24} color={colors.primary} />,
-          text: "Beacon detected",
-          color: colors.primary
-        };
       case 'connected':
         return {
-          icon: <Feather name="check" size={24} color={colors.success} />,
-          text: "Connected to beacon",
-          color: colors.success
+          icon: 'wifi',
+          color: colors.success,
+          title: 'Connected to Class',
+          subtitle: 'Attendance tracking active',
+          backgroundColor: `${colors.success}15`,
         };
-      case 'error': {
-        let errorText = "No class session found for this beacon. Please check your schedule or contact your instructor.";
-        if (beaconErrorReason === 'window-closed') {
-          errorText = "Attendance window is closed for this class.";
-        } else if (beaconErrorReason === 'ble-error') {
-          errorText = "Bluetooth error. Please check your device and permissions.";
-        }
+      case 'scanning':
         return {
-          icon: <Feather name="alert-circle" size={24} color={colors.error} />,
-          text: errorText,
-          color: colors.error
+          icon: 'wifi-search',
+          color: colors.primary,
+          title: 'Searching for Class',
+          subtitle: 'Please ensure you are in the classroom',
+          backgroundColor: `${colors.primary}15`,
         };
-      }
-      case 'inactive':
+      case 'error':
+        return {
+          icon: 'wifi-off',
+          color: colors.error,
+          title: 'Connection Error',
+          subtitle: beaconErrorReason || 'Unable to connect to class',
+          backgroundColor: `${colors.error}15`,
+        };
       default:
         return {
-          icon: <Feather name="wifi-off" size={24} color={colors.inactive} />,
-          text: "Beacon scanning inactive",
-          color: colors.inactive
+          icon: 'wifi-off',
+          color: colors.textSecondary,
+          title: 'Not Connected',
+          subtitle: 'No active class session detected',
+          backgroundColor: `${colors.textSecondary}15`,
         };
     }
   };
-  
-  const statusInfo = getStatusInfo();
-  
+
+  const statusConfig = getStatusConfig();
+
   return (
-    <Card style={styles.container} elevated>
-      <Animated.View
-        style={[
-          styles.iconContainer,
-          { 
-            borderColor: statusInfo.color,
-            transform: [{ scale: currentBeaconStatus === 'scanning' ? pulseAnim : 1 }]
-          }
-        ]}
-      >
-        {statusInfo.icon}
-      </Animated.View>
-      <Text style={[styles.statusText, { color: statusInfo.color }]}>
-        {statusInfo.text}
-      </Text>
+    <Card elevated style={[styles.container, { backgroundColor: colors.card }] as any}>
+      <View style={[styles.statusContainer, { backgroundColor: statusConfig.backgroundColor }]}>
+        <View style={[styles.iconContainer, { backgroundColor: statusConfig.color }]}>
+          <MaterialCommunityIcons 
+            name={statusConfig.icon as any} 
+            size={24} 
+            color="white" 
+          />
+        </View>
+        
+        <View style={styles.content}>
+          <Text style={[styles.title, { color: colors.text }]}>
+            {statusConfig.title}
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            {statusConfig.subtitle}
+          </Text>
+          
+
+        </View>
+        
+        <View style={styles.statusIndicator}>
+          <View style={[styles.statusDot, { backgroundColor: statusConfig.color }]} />
+        </View>
+      </View>
     </Card>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    marginBottom: 20,
+    borderRadius: 16,
+  },
+  statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
-  statusText: {
-    fontSize: 16,
-    fontWeight: '500',
-  }
+  content: {
+    flex: 1,
+  },
+  title: {
+    fontSize: screenWidth > 400 ? 16 : 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sessionInfo: {
+    marginTop: 8,
+  },
+  sessionText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusIndicator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 });
