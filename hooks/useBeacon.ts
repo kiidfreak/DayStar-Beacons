@@ -179,16 +179,7 @@ export const useBeacon = () => {
         return;
       }
       
-      // Check if Bluetooth is enabled on the device
-      const isEnabled = await manager.isEnabled();
-      console.log('🔵 Bluetooth enabled:', isEnabled);
-      
-      if (!isEnabled) {
-        console.log('❌ Bluetooth not enabled on device');
-        setError('Bluetooth is not enabled. Please enable Bluetooth in your device settings.');
-        return;
-      }
-      
+      // Bluetooth is ready for scanning
       console.log('✅ Bluetooth is ready for scanning');
     } catch (error) {
       console.error('❌ Error checking Bluetooth state:', error);
@@ -246,7 +237,7 @@ export const useBeacon = () => {
           
           if (scanError) {
             console.error('❌ Beacon scan error:', scanError);
-            setError(scanError.message);
+            setError(scanError.message || scanError.toString() || 'Beacon scan failed');
             return;
           }
 
@@ -270,10 +261,7 @@ export const useBeacon = () => {
               console.log('➕ Adding new beacon');
               return [...prev, beaconData];
             });
-
-            // Check if this beacon has an active session and mark attendance
-            console.log('🔍 Checking session for beacon:', beaconData.macAddress);
-            checkBeaconSessionAndMarkAttendance(beaconData.macAddress);
+            // (No auto-connect here)
           } else {
             console.log('⚠️ Device callback but no device data');
           }
@@ -331,6 +319,36 @@ export const useBeacon = () => {
     }
   }, [isScanning, attendanceMarked, manager]);
 
+  // Connect to a specific device by ID
+  const connectToDevice = useCallback(async (deviceId: string) => {
+    if (!manager) {
+      console.log('❌ BleManager not initialized for connectToDevice');
+      setError('Bluetooth manager not available');
+      return;
+    }
+    try {
+      console.log('🔗 Attempting to connect to device:', deviceId);
+      const device = await manager.devices([deviceId]).then(devices => devices[0]);
+      if (!device) {
+        setError('Device not found');
+        return;
+      }
+      if (device.isConnectable) {
+        await device.connect();
+        setIsConnected(true);
+        console.log('✅ Connected to device:', deviceId);
+        // Only after successful connection, check session and mark attendance
+        checkBeaconSessionAndMarkAttendance(deviceId);
+      } else {
+        setError('Device is not connectable');
+        console.log('⚠️ Device is not connectable:', deviceId);
+      }
+    } catch (connectError: any) {
+      setError(connectError?.message || connectError?.toString() || 'Failed to connect');
+      console.error('❌ Failed to connect to device:', connectError);
+    }
+  }, [manager]);
+
   // Check if beacon has an active session and mark attendance
   const checkBeaconSessionAndMarkAttendance = async (macAddress: string) => {
     console.log('🔍 checkBeaconSessionAndMarkAttendance called for:', macAddress);
@@ -356,6 +374,7 @@ export const useBeacon = () => {
 
       if (error) {
         console.error('❌ Error fetching beacon session:', error);
+        setError(error.message || error.toString() || 'Failed to fetch beacon session');
         return;
       }
 
@@ -380,6 +399,15 @@ export const useBeacon = () => {
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);
+      let errorMsg = 'Unknown error occurred while checking beacon session';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      } else if (typeof error === 'string') {
+        errorMsg = error;
+      } else if (error) {
+        errorMsg = error.toString();
+      }
+      setError(errorMsg);
     }
   };
 
@@ -436,5 +464,6 @@ export const useBeacon = () => {
     startContinuousScanning,
     stopContinuousScanning,
     requestBluetoothPermissions,
+    connectToDevice, // <-- expose this
   };
 };

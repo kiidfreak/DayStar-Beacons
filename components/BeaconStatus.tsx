@@ -15,6 +15,7 @@ export const BeaconStatus = () => {
     startContinuousScanning,
     stopContinuousScanning,
     requestBluetoothPermissions,
+    connectToDevice,
   } = useBeacon();
   const { themeColors } = useThemeStore();
 
@@ -52,7 +53,7 @@ export const BeaconStatus = () => {
 
   const getStatusIcon = () => {
     if (attendanceMarked) return 'check-circle';
-    if (isConnected) return 'bluetooth-connected';
+    if (isConnected) return 'bluetooth-connect';
     if (isScanning) return 'bluetooth';
     if (error) return 'alert-circle';
     return 'bluetooth';
@@ -131,6 +132,16 @@ export const BeaconStatus = () => {
               <Text style={[styles.beaconId, { color: colors.textSecondary }]}>
                 {beacon.macAddress}
               </Text>
+              <TouchableOpacity
+                style={[styles.connectButton, { backgroundColor: colors.primary, marginLeft: 8 }]}
+                onPress={() => connectToDevice(beacon.id)}
+              >
+                <MaterialCommunityIcons name="bluetooth-connect" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', marginLeft: 4 }}>Connect</Text>
+              </TouchableOpacity>
+              {isConnected && (
+                <Text style={{ color: colors.success, marginLeft: 8 }}>Connected</Text>
+              )}
             </View>
           ))}
         </View>
@@ -273,5 +284,12 @@ const styles = StyleSheet.create({
   beaconId: {
     fontSize: 10,
     marginLeft: 6,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
 });

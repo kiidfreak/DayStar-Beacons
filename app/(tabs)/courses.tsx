@@ -1,14 +1,89 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { CourseService, Enrollment } from '@/services/courseService';
+import { supabase } from '@/lib/supabase';
 
 export default function CoursesScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
   const router = useRouter();
+  const [allCourses, setAllCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [enrolling, setEnrolling] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  console.log('CoursesScreen user:', user);
+
+  useEffect(() => {
+    async function fetchCoursesAndEnrollments() {
+      setLoading(true);
+      try {
+        // Fetch all courses
+        const { data: courses, error: coursesError } = await supabase
+          .from('courses')
+          .select(`*, instructor:users!courses_instructor_id_fkey(full_name, email)`);
+        if (coursesError) throw coursesError;
+
+        // Fetch student's enrollments
+        let enrolledIds: Set<string> = new Set();
+        if (user?.id) {
+          const { data: enrollments, error: enrollmentsError } = await supabase
+            .from('student_course_enrollments')
+            .select('course_id, status')
+            .eq('student_id', user.id)
+            .eq('status', 'active');
+          if (enrollmentsError) throw enrollmentsError;
+          enrolledIds = new Set(enrollments.map(e => e.course_id));
+        }
+
+        // Merge: add isEnrolled to each course
+        const merged = courses.map(course => ({
+          ...course,
+          isEnrolled: enrolledIds.has(course.id),
+        }));
+        setAllCourses(merged);
+      } catch (err) {
+        setAllCourses([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCoursesAndEnrollments();
+  }, [user?.id]);
+
+  const enrollInCourse = async (courseId: string) => {
+    setEnrolling(courseId);
+    try {
+      await CourseService.enrollInCourse(courseId);
+      // Refresh all courses
+      if (user?.id) {
+        const { data: courses, error: coursesError } = await supabase
+          .from('courses')
+          .select(`*, instructor:users!courses_instructor_id_fkey(full_name, email)`);
+        if (coursesError) throw coursesError;
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id, status')
+          .eq('student_id', user.id)
+          .eq('status', 'active');
+        if (enrollmentsError) throw enrollmentsError;
+        const enrolledIds = new Set(enrollments.map(e => e.course_id));
+        const merged = courses.map(course => ({
+          ...course,
+          isEnrolled: enrolledIds.has(course.id),
+        }));
+        setAllCourses(merged);
+      }
+    } catch (e) {
+      alert('Failed to enroll in course.');
+    } finally {
+      setEnrolling(null);
+    }
+  };
 
   console.log('CoursesScreen: Rendering with user:', user?.id);
 
@@ -60,66 +135,37 @@ export default function CoursesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Courses Section */}
+        {/* All Courses Section */}
         <View style={[styles.coursesCard, { backgroundColor: colors.card }]}>
           <View style={styles.sectionHeader}>
             <MaterialCommunityIcons name="book-open" size={24} color={colors.primary} />
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              My Courses
+              All Courses
             </Text>
           </View>
-          
-          <Text style={[styles.coursesMessage, { color: colors.textSecondary }]}>
-            Course management features will be available soon. You can view your enrolled courses and manage your schedule here.
-          </Text>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)')}
-          >
-            <Ionicons name="home" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Dashboard</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/history')}
-          >
-            <Ionicons name="time" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>History</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <Ionicons name="settings" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Test Navigation */}
-        <View style={[styles.testCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.testTitle, { color: colors.text }]}>
-            Navigation Test
-          </Text>
-          <Text style={[styles.testText, { color: colors.textSecondary }]}>
-            If you can see this, you're on the Courses tab!
-          </Text>
-        </View>
-
-        {/* Coming Soon */}
-        <View style={[styles.comingSoonCard, { backgroundColor: colors.card }]}>
-          <MaterialCommunityIcons name="rocket-launch" size={32} color={colors.primary} />
-          <Text style={[styles.comingSoonTitle, { color: colors.text }]}>
-            Course Features Coming Soon
-          </Text>
-          <Text style={[styles.comingSoonMessage, { color: colors.textSecondary }]}>
-            We're working on bringing you full course management capabilities including enrollment, schedules, and attendance tracking.
-          </Text>
+          {loading ? (
+            <Text style={{ color: colors.textSecondary }}>Loading...</Text>
+          ) : allCourses.length === 0 ? (
+            <Text style={{ color: colors.textSecondary }}>No courses found.</Text>
+          ) : (
+            allCourses.map(course => (
+              <View key={course.id} style={{ marginBottom: 12 }}>
+                <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>{course.name}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{course.code} • {course.instructor?.full_name || 'Unknown Instructor'}</Text>
+                {course.isEnrolled ? (
+                  <Text style={{ color: colors.success, marginTop: 4 }}>Enrolled</Text>
+                ) : (
+                  <TouchableOpacity
+                    style={{ marginTop: 4, alignSelf: 'flex-start', backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
+                    onPress={() => enrollInCourse(course.id)}
+                    disabled={enrolling === course.id}
+                  >
+                    <Text style={{ color: '#FFF' }}>{enrolling === course.id ? 'Enrolling...' : 'Enroll'}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </View>

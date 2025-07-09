@@ -69,7 +69,6 @@ export class CourseService {
         id: course.id,
         code: course.code,
         name: course.name,
-        description: undefined,
         instructorId: course.instructor_id,
         instructor: undefined,
         instructorName: 'Unknown Instructor',
@@ -102,11 +101,24 @@ export class CourseService {
    * Get available courses for enrollment
    */
   static async getAvailableCourses(schoolId: string, studentId: string | null): Promise<Course[]> {
-
-    
     try {
-      // For registration, just get all courses
-      const { data, error } = await supabase
+      // Get enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('student_course_enrollments')
+        .select('course_id')
+        .eq('student_id', studentId)
+        .eq('status', 'active');
+
+      if (enrollmentsError) {
+        console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
+        throw enrollmentsError;
+      }
+
+      const enrolledIds = enrollments?.map(e => e.course_id) || [];
+      console.log('getAvailableCourses: enrolledIds', enrolledIds);
+
+      // Get all courses NOT in enrolledIds
+      let query = supabase
         .from('courses')
         .select(`
           *,
@@ -115,40 +127,31 @@ export class CourseService {
             full_name,
             email,
             role
-          ),
-          class_sessions(
-            *,
-            beacon:ble_beacons(*)
           )
         `);
 
-  
-      if (error) throw error;
+      if (enrolledIds.length > 0) {
+        console.log('getAvailableCourses: filtering out enrolledIds', enrolledIds);
+        query = query.not('id', 'in', `(${enrolledIds.map(id => `'${id}'`).join(',')})`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('getAvailableCourses: courses query error', error);
+        throw error;
+      }
+      console.log('getAvailableCourses: fetched courses', data);
 
       return data?.map((course: any) => ({
         id: course.id,
         code: course.code,
         name: course.name,
-        description: undefined,
         instructorId: course.instructor_id,
         instructor: course.instructor,
         instructorName: course.instructor?.full_name || 'Unknown Instructor',
-        location: undefined,
-        schedule: undefined,
-        schoolId: 'daystar-university', // Default school ID
-        school: undefined,
-        department: undefined,
-        semester: undefined,
-        academicYear: undefined,
-        maxStudents: 50, // Default value
-        beaconId: undefined,
-        beacon: undefined,
-        approvalRequired: false, // Default value
-        room: undefined,
-        beaconMacAddress: undefined,
         createdAt: course.created_at,
-        updatedAt: course.created_at,
-      } as Course)) || [];
+        updatedAt: course.updated_at,
+      })) || [];
     } catch (error) {
       console.error('Error fetching available courses:', error);
       throw error;
@@ -435,7 +438,6 @@ export class CourseService {
           id,
           name,
           code,
-          description,
           credits,
           instructor_id,
           users!inner(firstName, lastName),
@@ -476,10 +478,9 @@ export class CourseService {
             id,
             name,
             code,
-            description,
             credits,
             instructor_id,
-            users!inner(firstName, lastName),
+            users!courses_instructor_id_fkey(full_name, email),
             semester,
             academic_year,
             created_at
@@ -497,7 +498,8 @@ export class CourseService {
         ...enrollment,
         course: {
           ...enrollment.courses,
-          instructor_name: `${enrollment.courses.users.firstName} ${enrollment.courses.users.lastName}`,
+          instructor_name: enrollment.courses.users && enrollment.courses.users[0] ? enrollment.courses.users[0].full_name : '',
+          instructor_email: enrollment.courses.users && enrollment.courses.users[0] ? enrollment.courses.users[0].email || '' : '',
         },
       })) || [];
     } catch (error) {

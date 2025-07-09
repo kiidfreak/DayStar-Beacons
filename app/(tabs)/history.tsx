@@ -1,14 +1,35 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { AttendanceService } from '@/services/attendanceService';
 
 export default function HistoryScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
   const router = useRouter();
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<{ total: number; present: number; absent: number }>({ total: 0, present: 0, absent: 0 });
+
+  useEffect(() => {
+    if (user?.id) {
+      AttendanceService.getStudentAttendance(user.id)
+        .then(data => {
+          setRecords(data);
+          // Calculate analytics
+          const total = data.length;
+          const present = data.filter(r => r.status === 'present').length;
+          const absent = data.filter(r => r.status === 'absent').length;
+          setAnalytics({ total, present, absent });
+        })
+        .catch(() => setRecords([]))
+        .finally(() => setLoading(false));
+    }
+  }, [user?.id]);
 
   console.log('HistoryScreen: Rendering with user:', user?.id);
 
@@ -60,6 +81,19 @@ export default function HistoryScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Attendance Analytics */}
+        <View style={[styles.historyCard, { backgroundColor: colors.card, marginBottom: 12 }]}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="chart-bar" size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Attendance Analytics
+            </Text>
+          </View>
+          <Text style={{ color: colors.textSecondary }}>Total Records: {analytics.total}</Text>
+          <Text style={{ color: colors.success }}>Present: {analytics.present}</Text>
+          <Text style={{ color: colors.error }}>Absent: {analytics.absent}</Text>
+        </View>
+
         {/* History Section */}
         <View style={[styles.historyCard, { backgroundColor: colors.card }]}>
           <View style={styles.sectionHeader}>
@@ -68,48 +102,33 @@ export default function HistoryScreen() {
               Attendance History
             </Text>
           </View>
-          
-          <Text style={[styles.historyMessage, { color: colors.textSecondary }]}>
-            Your attendance history and records will be displayed here. Track your attendance patterns and view detailed reports.
-          </Text>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)')}
-          >
-            <Ionicons name="home" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Dashboard</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/courses')}
-          >
-            <Ionicons name="book" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Courses</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <Ionicons name="settings" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Coming Soon */}
-        <View style={[styles.comingSoonCard, { backgroundColor: colors.card }]}>
-          <MaterialCommunityIcons name="chart-line" size={32} color={colors.primary} />
-          <Text style={[styles.comingSoonTitle, { color: colors.text }]}>
-            History Features Coming Soon
-          </Text>
-          <Text style={[styles.comingSoonMessage, { color: colors.textSecondary }]}>
-            We're working on bringing you comprehensive attendance history with detailed analytics and reporting features.
-          </Text>
+          {loading ? (
+            <Text style={{ color: colors.textSecondary }}>Loading...</Text>
+          ) : records.length === 0 ? (
+            <Text style={{ color: colors.textSecondary }}>No attendance records found.</Text>
+          ) : (
+            records.map(record => {
+              const isOpen = expanded === record.id;
+              return (
+                <View key={record.id} style={{ marginBottom: 12 }}>
+                  <TouchableOpacity onPress={() => setExpanded(isOpen ? null : record.id)}>
+                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>{record.courseName}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{record.date} • {record.status}</Text>
+                  </TouchableOpacity>
+                  {isOpen && (
+                    <View style={{ marginTop: 6, paddingLeft: 8 }}>
+                      {record.checkInTime && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Check-in: {new Date(record.checkInTime).toLocaleTimeString()}</Text>}
+                      {record.method && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Method: {record.method}</Text>}
+                      {(record.latitude && record.longitude) && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Location: {record.latitude}, {record.longitude}</Text>}
+                      {record.verifiedBy && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Verified By: {record.verifiedBy}</Text>}
+                      {record.verifiedAt && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Verified At: {new Date(record.verifiedAt).toLocaleString()}</Text>}
+                      {record.location && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Session Location: {record.location}</Text>}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
         </View>
       </ScrollView>
     </View>

@@ -1,14 +1,18 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
+import { DeviceBindingService } from '@/services/deviceBindingService';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
-  const { themeColors } = useThemeStore();
+  const { theme, setTheme, themeColors, isDark } = useThemeStore();
   const router = useRouter();
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true); // Placeholder, implement real logic if needed
 
   console.log('SettingsScreen: Rendering with user:', user?.id);
 
@@ -30,7 +34,9 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     console.log('SettingsScreen: useEffect triggered');
-  }, []);
+    // Example: fetch device ID from user or device info
+    setDeviceId(user?.deviceId || 'N/A');
+  }, [user]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -69,46 +75,124 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Settings Section */}
+        {/* Account Info */}
         <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="cog" size={24} color={colors.primary} />
+            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Settings
+              Account Info
             </Text>
           </View>
-          
-          <Text style={[styles.settingsMessage, { color: colors.textSecondary }]}>
-            Manage your account settings, preferences, and app configuration here.
-          </Text>
+          <Text style={{ color: colors.textSecondary }}>Name: {user?.firstName} {user?.lastName}</Text>
+          <Text style={{ color: colors.textSecondary }}>Email: {user?.email}</Text>
+          <Text style={{ color: colors.textSecondary }}>Role: {user?.role}</Text>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)')}
-          >
-            <Ionicons name="home" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Dashboard</Text>
-          </TouchableOpacity>
+        {/* Theme Selection */}
+        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="theme-light-dark" size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Theme
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+            {['light', 'dark', 'system'].map(opt => (
+              <TouchableOpacity
+                key={opt}
+                style={{
+                  backgroundColor: theme === opt ? colors.primary : colors.background,
+                  borderColor: colors.primary,
+                  borderWidth: 1,
+                  borderRadius: 8,
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  marginRight: 8,
+                }}
+                onPress={() => setTheme(opt as any)}
+              >
+                <Text style={{ color: theme === opt ? '#FFF' : colors.text }}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ color: colors.textSecondary, marginTop: 4 }}>Current: {theme}</Text>
+        </View>
 
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/courses')}
+        {/* Device Info */}
+        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="cellphone" size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Device Info
+            </Text>
+          </View>
+          <Text style={{ color: colors.textSecondary }}>Device ID: {deviceId}</Text>
+          <TouchableOpacity
+            style={{ marginTop: 8, backgroundColor: colors.primary, borderRadius: 8, padding: 8, alignSelf: 'flex-start' }}
+            onPress={async () => {
+              if (!user?.id) return;
+              let reason = '';
+              Alert.prompt(
+                'Request Device Change',
+                'Please provide a reason for requesting a device change:',
+                [
+                  {
+                    text: 'Cancel',
+                    style: 'cancel',
+                  },
+                  {
+                    text: 'Submit',
+                    onPress: async (input) => {
+                      reason = input ?? '';
+                      if (!reason) {
+                        Alert.alert('Reason required', 'Please provide a reason.');
+                        return;
+                      }
+                      try {
+                        const success = await DeviceBindingService.requestDeviceChange(user.id, reason);
+                        if (success) {
+                          Alert.alert('Request Sent', 'Your device change request has been submitted.');
+                        } else {
+                          Alert.alert('Error', 'Failed to submit device change request.');
+                        }
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to submit device change request.');
+                      }
+                    },
+                  },
+                ],
+                'plain-text'
+              );
+            }}
           >
-            <Ionicons name="book" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Courses</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/history')}
-          >
-            <Ionicons name="time" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>History</Text>
+            <Text style={{ color: '#FFF' }}>Request Device Change</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Notifications Toggle */}
+        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="bell" size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Notifications
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={{ marginTop: 8, backgroundColor: notificationsEnabled ? colors.success : colors.inactive, borderRadius: 8, padding: 8, alignSelf: 'flex-start' }}
+            onPress={() => setNotificationsEnabled(v => !v)}
+          >
+            <Text style={{ color: '#FFF' }}>{notificationsEnabled ? 'Enabled' : 'Disabled'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Change Password */}
+        <TouchableOpacity
+          style={[styles.logoutButton, { backgroundColor: colors.primary, marginBottom: 16 }]}
+          onPress={() => router.push('/change-password')}
+        >
+          <MaterialCommunityIcons name="lock-reset" size={24} color="#FFFFFF" />
+          <Text style={styles.logoutText}>Change Password</Text>
+        </TouchableOpacity>
 
         {/* Logout Button */}
         <TouchableOpacity 
@@ -118,17 +202,6 @@ export default function SettingsScreen() {
           <MaterialCommunityIcons name="logout" size={24} color="#FFFFFF" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
-
-        {/* Coming Soon */}
-        <View style={[styles.comingSoonCard, { backgroundColor: colors.card }]}>
-          <MaterialCommunityIcons name="tools" size={32} color={colors.primary} />
-          <Text style={[styles.comingSoonTitle, { color: colors.text }]}>
-            Settings Features Coming Soon
-          </Text>
-          <Text style={[styles.comingSoonMessage, { color: colors.textSecondary }]}>
-            We're working on bringing you comprehensive settings with theme customization, notifications, and account management.
-          </Text>
-        </View>
       </ScrollView>
     </View>
   );

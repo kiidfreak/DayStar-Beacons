@@ -16,6 +16,7 @@ import QRScanner from '@/components/QRScanner';
 import { QRCodeService } from '@/services/qrCodeService';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { useAttendanceStore } from '@/store/attendanceStore';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -30,6 +31,7 @@ export default function QRScannerScreen() {
     message: string;
     courseName?: string;
   } | null>(null);
+  const { fetchAttendanceRecords } = useAttendanceStore();
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
@@ -67,6 +69,8 @@ export default function QRScannerScreen() {
       });
 
       if (result.success) {
+        // Refresh attendance records for realtime dashboard stats
+        await fetchAttendanceRecords();
         Alert.alert(
           'Check-in Successful! 🎉',
           `You have been checked in for ${result.courseName}`,
@@ -76,6 +80,8 @@ export default function QRScannerScreen() {
               onPress: () => {
                 setLastScanResult(null);
                 setIsScanning(true);
+                // Navigate back to dashboard
+                router.replace('/');
               }
             }
           ]
@@ -156,7 +162,7 @@ export default function QRScannerScreen() {
       </View>
 
       <View style={styles.content}>
-        <Card elevated style={[styles.infoCard, { backgroundColor: colors.card }]}>
+        <Card elevated style={{...styles.infoCard, backgroundColor: colors.card}}>
           <MaterialCommunityIcons 
             name="qrcode-scan" 
             size={48} 
@@ -171,7 +177,7 @@ export default function QRScannerScreen() {
         </Card>
 
         {lastScanResult && (
-          <Card elevated style={[styles.resultCard, { backgroundColor: colors.card }]}>
+          <Card elevated style={{...styles.resultCard, backgroundColor: colors.card}}>
             <View style={styles.resultHeader}>
               <MaterialCommunityIcons 
                 name={lastScanResult.success ? "check-circle" : "alert-circle"} 
@@ -200,7 +206,7 @@ export default function QRScannerScreen() {
           <Button
             title="Start Scanning"
             onPress={() => setIsScanning(true)}
-            style={styles.scanButton}
+            style={{...styles.scanButton}}
           />
         </View>
 
