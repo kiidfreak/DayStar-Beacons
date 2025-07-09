@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -27,9 +27,25 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  const { colors } = useTheme();
+  const { themeColors } = useThemeStore();
   const { login } = useAuthStore();
   const router = useRouter();
+
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {

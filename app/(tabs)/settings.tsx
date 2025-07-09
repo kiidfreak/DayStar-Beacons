@@ -1,16 +1,36 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Alert } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
-import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
-import colors from '@/constants/colors';
+import { useThemeStore } from '@/store/themeStore';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = colors[isDark ? 'dark' : 'light'];
+  const { themeColors } = useThemeStore();
   const router = useRouter();
+
+  console.log('SettingsScreen: Rendering with user:', user?.id);
+
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
+
+  useEffect(() => {
+    console.log('SettingsScreen: useEffect triggered');
+  }, []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -19,169 +39,96 @@ export default function SettingsScreen() {
     return 'Good Evening';
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: logout }
-      ]
-    );
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/(auth)/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Welcome Header */}
         <View style={styles.welcomeHeader}>
           <View style={styles.welcomeTextContainer}>
-            <Text style={[styles.greeting, { color: themeColors.textSecondary }]}>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
               {getGreeting()},
             </Text>
-            <Text style={[styles.welcomeName, { color: themeColors.text }]}>
+            <Text style={[styles.welcomeName, { color: colors.text }]}>
               {user?.firstName || 'Student'}!
             </Text>
           </View>
           <TouchableOpacity 
-            style={[styles.profileButton, { backgroundColor: themeColors.card }]}
-            onPress={() => router.push('/(tabs)')}
+            style={[styles.profileButton, { backgroundColor: colors.card }]}
+            onPress={() => router.push('/(tabs)/settings')}
           >
-            <MaterialCommunityIcons name="home" size={24} color={themeColors.primary} />
+            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
-        {/* Profile Section */}
-        <View style={[styles.sectionCard, { backgroundColor: themeColors.card }]}>
+        {/* Settings Section */}
+        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="account" size={24} color={themeColors.primary} />
-            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
-              Profile
-            </Text>
-          </View>
-          
-          <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: themeColors.text }]}>
-              {user?.firstName} {user?.lastName}
-            </Text>
-            <Text style={[styles.profileId, { color: themeColors.textSecondary }]}>
-              Student ID: {user?.id}
-            </Text>
-          </View>
-        </View>
-
-        {/* Settings Options */}
-        <View style={[styles.sectionCard, { backgroundColor: themeColors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="cog" size={24} color={themeColors.primary} />
-            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+            <MaterialCommunityIcons name="cog" size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Settings
             </Text>
           </View>
           
-          <TouchableOpacity style={styles.settingItem}>
-            <View style={styles.settingIconContainer}>
-              <MaterialCommunityIcons name="cellphone" size={20} color={themeColors.primary} />
-            </View>
-            <View style={styles.settingContent}>
-              <Text style={[styles.settingTitle, { color: themeColors.text }]}>
-                Device Settings
-              </Text>
-              <Text style={[styles.settingDescription, { color: themeColors.textSecondary }]}>
-                Manage device binding and security
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={themeColors.textSecondary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingItem}>
-            <View style={styles.settingIconContainer}>
-              <MaterialCommunityIcons name="bell-outline" size={20} color={themeColors.primary} />
-            </View>
-            <View style={styles.settingContent}>
-              <Text style={[styles.settingTitle, { color: themeColors.text }]}>
-                Notifications
-              </Text>
-              <Text style={[styles.settingDescription, { color: themeColors.textSecondary }]}>
-                Manage notification preferences
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={themeColors.textSecondary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingItem}>
-            <View style={styles.settingIconContainer}>
-              <MaterialCommunityIcons name="shield-check-outline" size={20} color={themeColors.primary} />
-            </View>
-            <View style={styles.settingContent}>
-              <Text style={[styles.settingTitle, { color: themeColors.text }]}>
-                Privacy & Security
-              </Text>
-              <Text style={[styles.settingDescription, { color: themeColors.textSecondary }]}>
-                Manage privacy settings
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={themeColors.textSecondary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingItem}>
-            <View style={styles.settingIconContainer}>
-              <MaterialCommunityIcons name="help-circle-outline" size={20} color={themeColors.primary} />
-            </View>
-            <View style={styles.settingContent}>
-              <Text style={[styles.settingTitle, { color: themeColors.text }]}>
-                Help & Support
-              </Text>
-              <Text style={[styles.settingDescription, { color: themeColors.textSecondary }]}>
-                Get help and contact support
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={themeColors.textSecondary} />
-          </TouchableOpacity>
+          <Text style={[styles.settingsMessage, { color: colors.textSecondary }]}>
+            Manage your account settings, preferences, and app configuration here.
+          </Text>
         </View>
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            style={[styles.actionButton, { backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)')}
           >
-            <Ionicons name="home" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>Dashboard</Text>
+            <Ionicons name="home" size={24} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.text }]}>Dashboard</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            style={[styles.actionButton, { backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)/courses')}
           >
-            <Ionicons name="book" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>Courses</Text>
+            <Ionicons name="book" size={24} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.text }]}>Courses</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            style={[styles.actionButton, { backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)/history')}
           >
-            <Ionicons name="time" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>History</Text>
+            <Ionicons name="time" size={24} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.text }]}>History</Text>
           </TouchableOpacity>
         </View>
 
         {/* Logout Button */}
         <TouchableOpacity 
-          style={[styles.logoutButton, { borderColor: themeColors.error }]}
+          style={[styles.logoutButton, { backgroundColor: colors.error }]}
           onPress={handleLogout}
         >
-          <MaterialCommunityIcons name="logout" size={20} color={themeColors.error} style={{ marginRight: 8 }} />
-          <Text style={[styles.logoutText, { color: themeColors.error }]}>
-            Logout
-          </Text>
+          <MaterialCommunityIcons name="logout" size={24} color="#FFFFFF" />
+          <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
-        {/* Version Info */}
-        <Text style={[styles.versionText, { color: themeColors.textSecondary }]}>
-          Version 1.0.0
-        </Text>
+        {/* Coming Soon */}
+        <View style={[styles.comingSoonCard, { backgroundColor: colors.card }]}>
+          <MaterialCommunityIcons name="tools" size={32} color={colors.primary} />
+          <Text style={[styles.comingSoonTitle, { color: colors.text }]}>
+            Settings Features Coming Soon
+          </Text>
+          <Text style={[styles.comingSoonMessage, { color: colors.textSecondary }]}>
+            We're working on bringing you comprehensive settings with theme customization, notifications, and account management.
+          </Text>
+        </View>
       </ScrollView>
     </View>
   );
@@ -222,7 +169,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sectionCard: {
+  settingsCard: {
     padding: 24,
     borderRadius: 16,
     marginBottom: 24,
@@ -237,43 +184,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 12,
   },
-  profileInfo: {
-    marginTop: 8,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  profileId: {
-    fontSize: 14,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  settingIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,174,239,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  settingContent: {
-    flex: 1,
-  },
-  settingTitle: {
+  settingsMessage: {
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  settingDescription: {
-    fontSize: 14,
+    lineHeight: 22,
   },
   quickActions: {
     flexDirection: 'row',
@@ -300,15 +213,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 16,
     borderRadius: 12,
-    borderWidth: 2,
-    marginBottom: 16,
+    marginBottom: 24,
   },
   logoutText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: 8,
   },
-  versionText: {
+  comingSoonCard: {
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  comingSoonTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
     textAlign: 'center',
-    fontSize: 14,
+  },
+  comingSoonMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

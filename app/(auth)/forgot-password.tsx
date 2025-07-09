@@ -1,19 +1,34 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useTheme } from '@/hooks/useTheme';
-import { supabase } from '@/lib/supabase';
+import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
+import Logo from '@/components/ui/Logo';
 
 export default function ForgotPasswordScreen() {
-  const router = useRouter();
-  const { colors } = useTheme();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [error, setError] = useState('');
+  
+  const { themeColors } = useThemeStore();
+  const router = useRouter();
+
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
 
   const handleResetPassword = async () => {
     if (!email.trim()) {

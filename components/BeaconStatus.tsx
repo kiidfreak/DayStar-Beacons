@@ -1,135 +1,277 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { useTheme } from '@/hooks/useTheme';
-import { useAttendanceStore } from '@/store/attendanceStore';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Card from '@/components/ui/Card';
+import { useBeacon } from '@/hooks/useBeacon';
+import { useThemeStore } from '@/store/themeStore';
 
-const { width: screenWidth } = Dimensions.get('window');
+export const BeaconStatus = () => {
+  const { 
+    isScanning, 
+    error, 
+    isConnected, 
+    attendanceMarked, 
+    currentSession,
+    beacons,
+    startContinuousScanning,
+    stopContinuousScanning,
+    requestBluetoothPermissions,
+  } = useBeacon();
+  const { themeColors } = useThemeStore();
 
-interface BeaconStatusProps {
-  beaconErrorReason?: string;
-}
+  // Fallback colors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
 
-export default function BeaconStatus({ beaconErrorReason }: BeaconStatusProps) {
-  const { colors } = useTheme();
-  const { currentBeaconStatus } = useAttendanceStore();
+  const getStatusText = () => {
+    if (attendanceMarked) return 'Attendance Marked!';
+    if (isConnected) return 'Connected to Beacon';
+    if (isScanning) return `Scanning for Beacons... (${beacons.length} found)`;
+    if (error) return 'Scan Error';
+    return 'Ready to Scan';
+  };
 
-  const getStatusConfig = () => {
-    switch (currentBeaconStatus) {
-      case 'connected':
-        return {
-          icon: 'wifi',
-          color: colors.success,
-          title: 'Connected to Class',
-          subtitle: 'Attendance tracking active',
-          backgroundColor: `${colors.success}15`,
-        };
-      case 'scanning':
-        return {
-          icon: 'wifi-search',
-          color: colors.primary,
-          title: 'Searching for Class',
-          subtitle: 'Please ensure you are in the classroom',
-          backgroundColor: `${colors.primary}15`,
-        };
-      case 'error':
-        return {
-          icon: 'wifi-off',
-          color: colors.error,
-          title: 'Connection Error',
-          subtitle: beaconErrorReason || 'Unable to connect to class',
-          backgroundColor: `${colors.error}15`,
-        };
-      default:
-        return {
-          icon: 'wifi-off',
-          color: colors.textSecondary,
-          title: 'Not Connected',
-          subtitle: 'No active class session detected',
-          backgroundColor: `${colors.textSecondary}15`,
-        };
+  const getStatusColor = () => {
+    if (attendanceMarked) return colors.success;
+    if (isConnected) return colors.primary;
+    if (isScanning) return colors.warning;
+    if (error) return colors.error;
+    return colors.inactive;
+  };
+
+  const getStatusIcon = () => {
+    if (attendanceMarked) return 'check-circle';
+    if (isConnected) return 'bluetooth-connected';
+    if (isScanning) return 'bluetooth';
+    if (error) return 'alert-circle';
+    return 'bluetooth';
+  };
+
+  const handleStartScan = () => {
+    console.log('🔘 Manual scan button pressed');
+    if (!isScanning) {
+      startContinuousScanning();
     }
   };
 
-  const statusConfig = getStatusConfig();
+  const handleRequestPermissions = () => {
+    console.log('🔘 Permission request button pressed');
+    requestBluetoothPermissions();
+  };
+
+  console.log('📊 BeaconStatus render - isScanning:', isScanning, 'error:', error, 'beacons:', beacons.length, 'attendanceMarked:', attendanceMarked);
 
   return (
-    <Card elevated style={[styles.container, { backgroundColor: colors.card }] as any}>
-      <View style={[styles.statusContainer, { backgroundColor: statusConfig.backgroundColor }]}>
-        <View style={[styles.iconContainer, { backgroundColor: statusConfig.color }]}>
-          <MaterialCommunityIcons 
-            name={statusConfig.icon as any} 
-            size={24} 
-            color="white" 
-          />
-        </View>
-        
-        <View style={styles.content}>
-          <Text style={[styles.title, { color: colors.text }]}>
-            {statusConfig.title}
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {statusConfig.subtitle}
-          </Text>
-          
-
-        </View>
-        
-        <View style={styles.statusIndicator}>
-          <View style={[styles.statusDot, { backgroundColor: statusConfig.color }]} />
-        </View>
+    <View style={[styles.container, { backgroundColor: colors.card }]}>
+      <View style={styles.header}>
+        <MaterialCommunityIcons 
+          name={getStatusIcon()} 
+          size={24} 
+          color={getStatusColor()} 
+        />
+        <Text style={[styles.title, { color: colors.text }]}>
+          Beacon Status
+        </Text>
       </View>
-    </Card>
+
+      <Text style={[styles.status, { color: getStatusColor() }]}>
+        {getStatusText()}
+      </Text>
+
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={[styles.error, { color: colors.error }]}>
+            {error}
+          </Text>
+          {error.includes('authorized') || error.includes('permission') ? (
+            <TouchableOpacity
+              style={[styles.permissionButton, { backgroundColor: colors.primary }]}
+              onPress={handleRequestPermissions}
+            >
+              <MaterialCommunityIcons 
+                name="shield-check" 
+                size={16} 
+                color="#FFFFFF" 
+              />
+              <Text style={styles.permissionButtonText}>
+                Grant Permissions
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+
+      {/* Show found beacons */}
+      {beacons.length > 0 && (
+        <View style={styles.beaconsList}>
+          <Text style={[styles.beaconsTitle, { color: colors.text }]}>
+            Found Devices ({beacons.length}):
+          </Text>
+          {beacons.map((beacon, index) => (
+            <View key={beacon.id} style={[styles.beaconItem, { backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons 
+                name="bluetooth" 
+                size={16} 
+                color={colors.primary} 
+              />
+              <Text style={[styles.beaconName, { color: colors.text }]}>
+                {beacon.name || 'Unknown Device'}
+              </Text>
+              <Text style={[styles.beaconId, { color: colors.textSecondary }]}>
+                {beacon.macAddress}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {currentSession && (
+        <View style={styles.sessionInfo}>
+          <Text style={[styles.sessionText, { color: colors.textSecondary }]}>
+            Active Session: {currentSession.course_id}
+          </Text>
+        </View>
+      )}
+
+      {/* Manual scan button */}
+      {!isScanning && !attendanceMarked && !error && (
+        <TouchableOpacity
+          style={[styles.scanButton, { backgroundColor: colors.primary }]}
+          onPress={handleStartScan}
+        >
+          <MaterialCommunityIcons 
+            name="bluetooth" 
+            size={20} 
+            color="#FFFFFF" 
+          />
+          <Text style={styles.scanButtonText}>
+            Start Scanning
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {attendanceMarked && (
+        <View style={[styles.successMessage, { backgroundColor: colors.success }]}>
+          <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+          <Text style={styles.successText}>
+            Attendance recorded successfully!
+          </Text>
+        </View>
+      )}
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 20,
-    borderRadius: 16,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: 16,
     borderRadius: 12,
+    marginBottom: 16,
   },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
-  },
-  content: {
-    flex: 1,
+    marginBottom: 8,
   },
   title: {
-    fontSize: screenWidth > 400 ? 16 : 14,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
-  subtitle: {
-    fontSize: 13,
-    lineHeight: 18,
+  status: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  error: {
+    fontSize: 12,
+    marginRight: 8,
+  },
+  permissionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  permissionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
   },
   sessionInfo: {
-    marginTop: 8,
+    marginBottom: 12,
   },
   sessionText: {
     fontSize: 12,
-    fontWeight: '600',
   },
-  statusIndicator: {
+  scanButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 24,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  scanButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  successMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 6,
+  },
+  successText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  beaconsList: {
+    marginBottom: 12,
+  },
+  beaconsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  beaconItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  beaconName: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+    flex: 1,
+  },
+  beaconId: {
+    fontSize: 10,
+    marginLeft: 6,
   },
 });

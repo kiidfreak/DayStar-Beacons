@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, SafeAreaView, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeStore } from '@/store/themeStore';
 import { Feather } from '@expo/vector-icons';
 import Card from '@/components/ui/Card';
 import { useUniversityStore } from '@/store/universityStore';
@@ -74,9 +74,25 @@ const universities = [
 
 export default function SelectUniversityScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { themeColors } = useThemeStore();
   const { setUniversity } = useUniversityStore();
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
   
   // Filter universities - show only Daystar by default, all matching when searching
   const filteredUniversities = searchQuery.trim() === '' 

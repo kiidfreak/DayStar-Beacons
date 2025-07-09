@@ -138,24 +138,21 @@ export interface ClassSession {
 
 export interface AttendanceRecord {
   id: string;
-  sessionId: string;
-  session?: ClassSession;
-  studentId: string;
-  student?: User;
-  method: 'BLE' | 'QR' | 'manual';
-  status: 'verified' | 'pending' | 'absent' | 'late';
-  checkInTime?: string;
-  latitude?: number;
-  longitude?: number;
-  deviceInfo?: any;
-  verifiedBy?: string;
-  verifier?: User;
-  verifiedAt?: string;
-  courseName: string;
-  courseCode: string;
-  date: string;
-  locationAccuracy?: number;
-  createdAt: string;
+  student_id: string;
+  session_id: string;
+  course_code: string;
+  check_in_time: string;
+  status: 'pending' | 'present' | 'absent';
+  created_at: string;
+}
+
+export interface CourseSession {
+  id: string;
+  course_code: string;
+  course_name: string;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
 }
 
 export type BeaconStatus = 'scanning' | 'detected' | 'connected' | 'error' | 'inactive';

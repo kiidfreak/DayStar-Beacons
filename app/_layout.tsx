@@ -10,6 +10,7 @@ import colors from '@/constants/colors';
 import { useUniversityStore } from "@/store/universityStore";
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { Feather } from '@expo/vector-icons';
+import { useThemeStore } from '@/store/themeStore';
 
 export const unstable_settings = {
   // Make sure the app starts with loading screen
@@ -74,20 +75,40 @@ export default function RootLayout() {
 
 function Banner() {
   const { bannerMessage, clearBannerMessage } = useAttendanceStore();
+  const { themeColors } = useThemeStore();
+  
+  // Fallback theme colors
+  const safeThemeColors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
+
   useEffect(() => {
     if (bannerMessage) {
       const timer = setTimeout(() => clearBannerMessage(), 3000);
       return () => clearTimeout(timer);
     }
   }, [bannerMessage]);
+  
   if (!bannerMessage) return null;
+  
   return (
     <View style={{
       position: 'absolute',
       top: 24,
       left: 0,
       right: 0,
-      backgroundColor: 'red',
+      backgroundColor: safeThemeColors.error,
       paddingVertical: 8,
       paddingHorizontal: 16,
       zIndex: 9999,
@@ -126,43 +147,80 @@ function RootLayoutNav() {
   // Move all hooks to the top - ALWAYS call them in the same order
   const { isAuthenticated, user, hydrated, justLoggedOut, setJustLoggedOut } = useAuthStore();
   const { university } = useUniversityStore();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = colors[isDark ? 'dark' : 'light'];
+  const { themeColors, isDark } = useThemeStore();
   const router = useRouter();
-  const { bannerMessage } = useAttendanceStore();
+  const { bannerMessage, startRealtimeSubscriptions, stopRealtimeSubscriptions } = useAttendanceStore();
   const pathname = usePathname();
 
-  // Simple navigation logic
+  // Fallback theme colors to prevent undefined errors
+  const safeThemeColors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
+
+  // Start real-time subscriptions when authenticated
+  React.useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('Starting real-time subscriptions...');
+      startRealtimeSubscriptions();
+    } else {
+      console.log('Stopping real-time subscriptions...');
+      stopRealtimeSubscriptions();
+    }
+
+    return () => {
+      stopRealtimeSubscriptions();
+    };
+  }, [isAuthenticated, user, startRealtimeSubscriptions, stopRealtimeSubscriptions]);
+
+  // Improved navigation logic
   React.useEffect(() => {
     if (hydrated) {
-      console.log('Navigation check - isAuthenticated:', isAuthenticated, 'user:', user?.id, 'pathname:', pathname);
-      
-      // Add navigation guards to prevent infinite loops
+      console.log('Navigation check - isAuthenticated:', isAuthenticated, 'user:', user?.id, 'university:', university, 'pathname:', pathname);
       const currentPath = pathname || '';
-      const isOnTabs = currentPath.startsWith('/(tabs)');
       const isOnAuth = currentPath.startsWith('/(auth)');
-      
-      if (justLoggedOut) {
-        console.log('Navigating to login after logout');
-        if (!isOnAuth) {
+      const isOnLogin = currentPath === '/(auth)/login';
+      const isOnSelectUniversity = currentPath === '/(auth)/select-university';
+      const isOnTabs = currentPath.startsWith('/(tabs)') || 
+                      currentPath === '/' || 
+                      currentPath === '/courses' || 
+                      currentPath === '/history' || 
+                      currentPath === '/settings';
+
+      console.log('Navigation paths - isOnAuth:', isOnAuth, 'isOnLogin:', isOnLogin, 'isOnSelectUniversity:', isOnSelectUniversity, 'isOnTabs:', isOnTabs);
+      console.log('Current path details:', { currentPath, pathname, isOnTabs });
+
+      if (!university) {
+        if (!isOnSelectUniversity) {
+          console.log('No university selected, navigating to university selection');
+          router.replace('/(auth)/select-university');
+        }
+      } else if (!isAuthenticated || !user) {
+        if (!isOnLogin) {
+          console.log('University selected, not authenticated, navigating to login');
           router.replace('/(auth)/login');
         }
-      } else if (isAuthenticated && user) {
-        console.log('Navigating to tabs - user authenticated');
-        if (!isOnTabs) {
+      } else {
+        // Only navigate to tabs if not already on tabs or auth pages
+        if (!isOnTabs && !isOnAuth) {
+          console.log('Authenticated, navigating to tabs index');
           router.replace('/(tabs)');
         } else {
-          console.log('Already on tabs, not navigating');
-        }
-      } else {
-        console.log('Navigating to university selection - not authenticated');
-        if (!isOnAuth) {
-          router.replace('/(auth)/select-university');
+          console.log('Already on tabs or auth, no navigation needed');
         }
       }
     }
-  }, [isAuthenticated, user, hydrated, justLoggedOut, router, pathname]);
+  }, [hydrated, isAuthenticated, user, university, router, pathname]);
 
   // Handle logout navigation
   React.useEffect(() => {
@@ -185,18 +243,18 @@ function RootLayoutNav() {
       {/* Fixed status bar handling for mobile to prevent content overlap */}
       <StatusBar 
         barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={Platform.OS === 'android' ? themeColors.background : undefined}
+        backgroundColor={Platform.OS === 'android' ? safeThemeColors.background : undefined}
         translucent={false} // Changed to false to prevent content overlap
       />
       <Stack
         screenOptions={{
           headerBackTitle: "Back",
           headerStyle: {
-            backgroundColor: themeColors.background,
+            backgroundColor: safeThemeColors.background,
             // Better header styling for mobile with proper safe area handling
             ...Platform.select({
               ios: {
-                shadowColor: themeColors.border,
+                shadowColor: safeThemeColors.border,
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.1,
                 shadowRadius: 0,
@@ -206,7 +264,7 @@ function RootLayoutNav() {
               },
             }),
           },
-          headerTintColor: themeColors.primary,
+          headerTintColor: safeThemeColors.primary,
           headerTitleStyle: {
             fontWeight: '600',
             // Better title styling for mobile
@@ -222,7 +280,7 @@ function RootLayoutNav() {
             }),
           },
           contentStyle: {
-            backgroundColor: themeColors.background,
+            backgroundColor: safeThemeColors.background,
           },
           // Better gesture handling - only enable for specific screens
           gestureEnabled: false, // Disable global gestures to prevent conflicts

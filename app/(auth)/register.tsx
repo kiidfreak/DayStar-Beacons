@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
-import { useTheme } from '@/hooks/useTheme';
-import { supabase } from '@/lib/supabase';
+import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { CourseService } from '@/services/courseService';
 import { Course } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -17,7 +17,7 @@ type RegistrationStep = 'personal' | 'courses' | 'review';
 export default function RegisterScreen() {
   const router = useRouter();
   const { login } = useAuthStore();
-  const { colors } = useTheme();
+  const { themeColors } = useThemeStore();
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<RegistrationStep>('personal');
   const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
@@ -26,7 +26,8 @@ export default function RegisterScreen() {
   
   // Form fields
   const [formData, setFormData] = useState({
-    fullName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
     department: '',
@@ -35,6 +36,24 @@ export default function RegisterScreen() {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
 
   // Load available courses
   useEffect(() => {
@@ -61,8 +80,12 @@ export default function RegisterScreen() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.fullName.trim()) {
-      newErrors.fullName = 'Full name is required';
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = 'First name is required';
+    }
+
+    if (!formData.lastName.trim()) {
+      newErrors.lastName = 'Last name is required';
     }
 
     if (!formData.email.trim()) {
@@ -131,17 +154,22 @@ export default function RegisterScreen() {
 
   // Handle registration
   const handleRegister = async () => {
-    if (!validateForm() || !validateCourseSelection()) return;
+    console.log('Starting registration process...');
+    if (!validateForm() || !validateCourseSelection()) {
+      console.log('Validation failed, stopping registration');
+      return;
+    }
 
     setIsLoading(true);
     try {
+      console.log('Creating user account with Supabase Auth...');
       // Create user account with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
           data: {
-            full_name: formData.fullName,
+            full_name: `${formData.firstName} ${formData.lastName}`,
             phone: formData.phone,
             department: formData.department,
             role: 'student',
@@ -149,22 +177,34 @@ export default function RegisterScreen() {
         }
       });
 
-      if (authError) throw authError;
+      console.log('Auth response:', { authData, authError });
 
+      if (authError) {
+        console.error('Auth error:', authError);
+        throw authError;
+      }
+
+      console.log('Creating user profile in users table...');
       // Create user profile in users table
       const { error: profileError } = await supabase
         .from('users')
         .insert({
           id: authData.user?.id,
-          full_name: formData.fullName,
+          full_name: `${formData.firstName} ${formData.lastName}`,
           email: formData.email,
           phone: formData.phone,
           department: formData.department,
           role: 'student',
         });
 
-      if (profileError) throw profileError;
+      console.log('Profile creation response:', { profileError });
 
+      if (profileError) {
+        console.error('Profile error:', profileError);
+        throw profileError;
+      }
+
+      console.log('Enrolling student in selected courses...');
       // Enroll student in selected courses
       const enrollmentPromises = selectedCourses.map(courseId =>
         supabase
@@ -178,17 +218,66 @@ export default function RegisterScreen() {
       );
 
       await Promise.all(enrollmentPromises);
+      console.log('Registration completed successfully');
 
-      Alert.alert(
-        'Registration Successful',
-        `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s). You can now log in.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => router.push('/(auth)/login')
-          }
-        ]
-      );
+      // Automatically log the user in after successful registration
+      console.log('Auto-logging in after registration...');
+      try {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (signInError) {
+          console.error('Auto-login error:', signInError);
+          // If auto-login fails, redirect to login
+          Alert.alert(
+            'Registration Successful',
+            `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s). Please sign in with your new account.`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  console.log('Navigating to login screen...');
+                  router.push('/(auth)/login');
+                }
+              }
+            ]
+          );
+        } else {
+          console.log('Auto-login successful, navigating to tabs');
+          // Auto-login successful, navigate to main app
+          Alert.alert(
+            'Registration Successful',
+            `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s). Welcome!`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  console.log('Navigating to tabs after auto-login...');
+                  router.replace('/(tabs)');
+                }
+              }
+            ]
+          );
+        }
+      } catch (autoLoginError) {
+        console.error('Auto-login failed:', autoLoginError);
+        // Fallback to login screen
+        Alert.alert(
+          'Registration Successful',
+          `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s). Please sign in with your new account.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('Navigating to login screen...');
+                router.push('/(auth)/login');
+              }
+            }
+          ]
+        );
+      }
 
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -197,6 +286,7 @@ export default function RegisterScreen() {
         error.message || 'An error occurred during registration. Please try again.'
       );
     } finally {
+      console.log('Registration process completed, setting loading to false');
       setIsLoading(false);
     }
   };
@@ -231,21 +321,41 @@ export default function RegisterScreen() {
   const renderPersonalInfoStep = () => (
     <Card elevated style={styles.formCard}>
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: colors.text }]}>Full Name *</Text>
+        <Text style={[styles.label, { color: colors.text }]}>First Name *</Text>
         <TextInput
           style={[styles.input, { 
             backgroundColor: colors.card, 
             color: colors.text,
-            borderColor: errors.fullName ? colors.error : colors.border 
+            borderColor: errors.firstName ? colors.error : colors.border 
           }]}
-          placeholder="Enter your full name"
+          placeholder="Enter your first name"
           placeholderTextColor={colors.textSecondary}
-          value={formData.fullName}
-          onChangeText={(value) => updateFormData('fullName', value)}
+          value={formData.firstName}
+          onChangeText={(value) => updateFormData('firstName', value)}
         />
-        {errors.fullName && (
+        {errors.firstName && (
           <Text style={[styles.errorText, { color: colors.error }]}>
-            {errors.fullName}
+            {errors.firstName}
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={[styles.label, { color: colors.text }]}>Last Name *</Text>
+        <TextInput
+          style={[styles.input, { 
+            backgroundColor: colors.card, 
+            color: colors.text,
+            borderColor: errors.lastName ? colors.error : colors.border 
+          }]}
+          placeholder="Enter your last name"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.lastName}
+          onChangeText={(value) => updateFormData('lastName', value)}
+        />
+        {errors.lastName && (
+          <Text style={[styles.errorText, { color: colors.error }]}>
+            {errors.lastName}
           </Text>
         )}
       </View>
@@ -323,7 +433,7 @@ export default function RegisterScreen() {
           }]}
           placeholder="Enter your password"
           placeholderTextColor={colors.textSecondary}
-          secureTextEntry
+          secureTextEntry={!showPassword}
           value={formData.password}
           onChangeText={(value) => updateFormData('password', value)}
         />
@@ -344,7 +454,7 @@ export default function RegisterScreen() {
           }]}
           placeholder="Confirm your password"
           placeholderTextColor={colors.textSecondary}
-          secureTextEntry
+          secureTextEntry={!showConfirmPassword}
           value={formData.confirmPassword}
           onChangeText={(value) => updateFormData('confirmPassword', value)}
         />
@@ -428,7 +538,7 @@ export default function RegisterScreen() {
         <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Personal Information</Text>
         <View style={styles.reviewItem}>
           <Text style={[styles.reviewKey, { color: colors.textSecondary }]}>Name:</Text>
-          <Text style={[styles.reviewValue, { color: colors.text }]}>{formData.fullName}</Text>
+          <Text style={[styles.reviewValue, { color: colors.text }]}>{`${formData.firstName} ${formData.lastName}`}</Text>
         </View>
         <View style={styles.reviewItem}>
           <Text style={[styles.reviewKey, { color: colors.textSecondary }]}>Email:</Text>

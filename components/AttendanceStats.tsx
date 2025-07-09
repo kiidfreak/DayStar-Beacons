@@ -1,200 +1,169 @@
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { useTheme } from '@/hooks/useTheme';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Card from '@/components/ui/Card';
+import { useAttendanceStore } from '@/store/attendanceStore';
+import { useThemeStore } from '@/store/themeStore';
 
-const { width: screenWidth } = Dimensions.get('window');
-
-interface AttendanceStatsProps {
-  totalClasses: number;
-  presentCount: number;
-  lateCount: number;
-  absentCount: number;
+interface StatsData {
+  totalSessions: number;
+  attendedSessions: number;
+  attendanceRate: number;
+  thisWeek: number;
+  thisMonth: number;
 }
 
-export default function AttendanceStats({ 
-  totalClasses, 
-  presentCount, 
-  lateCount, 
-  absentCount 
-}: AttendanceStatsProps) {
-  const { colors } = useTheme();
+export function AttendanceStats() {
+  const { attendanceRecords } = useAttendanceStore();
+  const { themeColors } = useThemeStore();
+  const [stats, setStats] = useState<StatsData>({
+    totalSessions: 0,
+    attendedSessions: 0,
+    attendanceRate: 0,
+    thisWeek: 0,
+    thisMonth: 0,
+  });
 
-  const presentPercentage = totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0;
-  const latePercentage = totalClasses > 0 ? Math.round((lateCount / totalClasses) * 100) : 0;
-  const absentPercentage = totalClasses > 0 ? Math.round((absentCount / totalClasses) * 100) : 0;
+  useEffect(() => {
+    calculateStats();
+  }, [attendanceRecords]);
 
-  const stats = [
-    {
-      label: 'Present',
-      count: presentCount,
-      percentage: presentPercentage,
-      color: colors.success,
-      icon: 'check-circle',
-    },
-    {
-      label: 'Late',
-      count: lateCount,
-      percentage: latePercentage,
-      color: colors.warning,
-      icon: 'clock-alert',
-    },
-    {
-      label: 'Absent',
-      count: absentCount,
-      percentage: absentPercentage,
-      color: colors.error,
-      icon: 'close-circle',
-    },
-  ];
+  const calculateStats = () => {
+    const now = new Date();
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const thisWeekRecords = attendanceRecords.filter(record => {
+      const recordDate = new Date(record.check_in_time);
+      return recordDate >= weekStart;
+    });
+
+    const thisMonthRecords = attendanceRecords.filter(record => {
+      const recordDate = new Date(record.check_in_time);
+      return recordDate >= monthStart;
+    });
+
+    const totalSessions = attendanceRecords.length;
+    const attendedSessions = attendanceRecords.filter(record => 
+      record.status === 'present'
+    ).length;
+
+    const attendanceRate = totalSessions > 0 ? (attendedSessions / totalSessions) * 100 : 0;
+
+    setStats({
+      totalSessions,
+      attendedSessions,
+      attendanceRate: Math.round(attendanceRate),
+      thisWeek: thisWeekRecords.length,
+      thisMonth: thisMonthRecords.length,
+    });
+  };
 
   return (
-    <Card elevated style={[styles.container, { backgroundColor: colors.card }] as any}>
+    <View style={[styles.container, { backgroundColor: themeColors.card }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>
-          Attendance Overview
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {totalClasses} total classes
+        <MaterialCommunityIcons 
+          name="chart-line" 
+          size={24} 
+          color={themeColors.primary} 
+        />
+        <Text style={[styles.title, { color: themeColors.text }]}>
+          Attendance Stats
         </Text>
       </View>
 
       <View style={styles.statsGrid}>
-        {stats.map((stat, index) => (
-          <View key={stat.label} style={styles.statItem}>
-            <View style={[styles.statIcon, { backgroundColor: `${stat.color}20` }]}>
-              <MaterialCommunityIcons 
-                name={stat.icon as any} 
-                size={20} 
-                color={stat.color} 
-              />
-            </View>
-            
-            <View style={styles.statContent}>
-              <Text style={[styles.statCount, { color: colors.text }]}>
-                {stat.count}
-              </Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                {stat.label}
-              </Text>
-              <Text style={[styles.statPercentage, { color: stat.color }]}>
-                {stat.percentage}%
-              </Text>
-            </View>
-          </View>
-        ))}
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: themeColors.primary }]}>
+            {stats.attendanceRate}%
+          </Text>
+          <Text style={[styles.statLabel, { color: themeColors.textSecondary }]}>
+            Attendance Rate
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: themeColors.success }]}>
+            {stats.attendedSessions}
+          </Text>
+          <Text style={[styles.statLabel, { color: themeColors.textSecondary }]}>
+            Sessions Attended
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: themeColors.warning }]}>
+            {stats.thisWeek}
+          </Text>
+          <Text style={[styles.statLabel, { color: themeColors.textSecondary }]}>
+            This Week
+          </Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={[styles.statValue, { color: themeColors.secondary }]}>
+            {stats.thisMonth}
+          </Text>
+          <Text style={[styles.statLabel, { color: themeColors.textSecondary }]}>
+            This Month
+          </Text>
+        </View>
       </View>
 
-      {totalClasses > 0 && (
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { 
-                  backgroundColor: colors.success,
-                  width: `${presentPercentage}%`
-                }
-              ]} 
-            />
-            <View 
-              style={[
-                styles.progressFill, 
-                { 
-                  backgroundColor: colors.warning,
-                  width: `${latePercentage}%`
-                }
-              ]} 
-            />
-            <View 
-              style={[
-                styles.progressFill, 
-                { 
-                  backgroundColor: colors.error,
-                  width: `${absentPercentage}%`
-                }
-              ]} 
-            />
-          </View>
-          <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-            Overall: {presentPercentage}% present
+      {stats.totalSessions > 0 && (
+        <View style={styles.summary}>
+          <Text style={[styles.summaryText, { color: themeColors.textSecondary }]}>
+            Total Sessions: {stats.totalSessions}
           </Text>
         </View>
       )}
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    marginBottom: 24,
-    borderRadius: 16,
+    padding: 16,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 8,
   },
   header: {
-    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: screenWidth > 400 ? 20 : 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   statsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 20,
   },
   statItem: {
-    flex: 1,
+    width: '48%',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    marginBottom: 16,
   },
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statContent: {
-    alignItems: 'center',
-  },
-  statCount: {
-    fontSize: screenWidth > 400 ? 24 : 20,
+  statValue: {
+    fontSize: 24,
     fontWeight: '700',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 4,
+    textAlign: 'center',
   },
-  statPercentage: {
-    fontSize: 11,
-    fontWeight: '600',
+  summary: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
   },
-  progressContainer: {
-    alignItems: 'center',
-  },
-  progressBar: {
-    width: '100%',
-    height: 8,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 4,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-  },
-  progressText: {
+  summaryText: {
     fontSize: 12,
-    fontWeight: '500',
+    textAlign: 'center',
   },
 });

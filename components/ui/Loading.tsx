@@ -2,11 +2,34 @@ import React, { useEffect } from 'react';
 import { View, StyleSheet, Animated, Easing, Text } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useThemeStore } from '@/store/themeStore';
 
-export default function Loading() {
+interface LoadingProps {
+  message?: string;
+  size?: 'small' | 'large';
+}
+
+export default function Loading({ message = 'Loading...', size = 'large' }: LoadingProps) {
   const { colors } = useTheme();
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const { themeColors } = useThemeStore();
+  
+  // Fallback colors to prevent undefined errors
+  const fallbackColors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
   
   useEffect(() => {
     // Fade in animation
@@ -36,7 +59,7 @@ export default function Loading() {
   }, [pulseAnim, fadeAnim]);
   
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: fallbackColors.background }]}>
       <Animated.View 
         style={[
           styles.content,
@@ -47,7 +70,7 @@ export default function Loading() {
         ]}
       >
         <LinearGradient
-          colors={[colors.primary, colors.secondary]}
+          colors={[fallbackColors.primary, fallbackColors.secondary]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.logoContainer}
@@ -56,14 +79,14 @@ export default function Loading() {
           <Text style={styles.logoTextSmall}>CHECK</Text>
         </LinearGradient>
         
-        <Text style={[styles.tagline, { color: colors.primary }]}>
-          Attendance Made Simple
+        <Text style={[styles.tagline, { color: fallbackColors.primary }]}>
+          {message}
         </Text>
         
         <View style={styles.loadingIndicator}>
-          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
-          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
-          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+          <View style={[styles.dot, { backgroundColor: fallbackColors.primary }]} />
+          <View style={[styles.dot, { backgroundColor: fallbackColors.primary }]} />
+          <View style={[styles.dot, { backgroundColor: fallbackColors.primary }]} />
         </View>
       </Animated.View>
     </View>

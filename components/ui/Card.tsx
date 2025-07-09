@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeStore } from '@/store/themeStore';
 
 interface CardProps {
   children: React.ReactNode;
@@ -16,7 +16,25 @@ export default function Card({
   gradient = false,
   elevated = false
 }: CardProps) {
-  const { colors } = useTheme();
+  const { themeColors } = useThemeStore();
+  
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+    cardGradientStart: '#F7F9FC',
+    cardGradientEnd: '#E6F7FE',
+  };
   
   // Safely combine styles for web compatibility
   const cardStyles = StyleSheet.flatten([

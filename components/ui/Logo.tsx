@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeStore } from '@/store/themeStore';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface LogoProps {
@@ -9,7 +9,23 @@ interface LogoProps {
 }
 
 export default function Logo({ size = 'medium', showTagline = true }: LogoProps) {
-  const { colors } = useTheme();
+  const { themeColors } = useThemeStore();
+  
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
   
   // Get logo size
   const getLogoSize = () => {

@@ -1,92 +1,120 @@
-import { QRCodeData } from '@/types';
+import CryptoJS from 'crypto-js';
 
-// Mock QR code generation utility (in real app, this would be done server-side)
-export class QRSecurityUtils {
-  
-  // Generate a secure signature for QR code data
-  static generateSignature(data: Omit<QRCodeData, 'signature'>): string {
-    // In a real app, use HMAC-SHA256 or similar cryptographic function
-    // This is a simple mock implementation
-    const payload = `${data.courseId}-${data.timestamp}-${data.expiresAt}-${data.instructorId}`;
-    return payload.split('').reverse().join('');
-  }
-  
-  // Validate QR code signature
-  static validateSignature(data: QRCodeData): boolean {
-    const expectedSignature = this.generateSignature({
-      type: data.type,
-      courseId: data.courseId,
-      timestamp: data.timestamp,
-      expiresAt: data.expiresAt,
-      location: data.location,
-      instructorId: data.instructorId,
-      sessionId: data.sessionId,
-    });
-    
-    return data.signature === expectedSignature;
-  }
-  
-  // Check if QR code is within valid time window
-  static isTimeValid(data: QRCodeData): boolean {
+const SECRET_KEY = 'your-secret-key-here'; // In production, use environment variable
+
+export interface QRCodeData {
+  sessionId: string;
+  courseId: string;
+  timestamp: number;
+  expiresAt: number;
+}
+
+export class QRSecurity {
+  // Generate QR code data for a session
+  static generateQRData(sessionId: string, courseId: string, durationMinutes: number = 15): string {
     const now = Date.now();
-    return now >= data.timestamp && now <= data.expiresAt;
-  }
-  
-  // Generate a mock QR code for testing (instructor would do this)
-  static generateMockQRCode(courseId: string, instructorId: string = 'instructor-1'): QRCodeData {
-    const now = Date.now();
-    const expiresAt = now + (5 * 60 * 1000); // 5 minutes validity
+    const expiresAt = now + (durationMinutes * 60 * 1000);
     
-    const qrData: Omit<QRCodeData, 'signature'> = {
-      type: 'attendance',
+    const qrData: QRCodeData = {
+      sessionId,
       courseId,
       timestamp: now,
       expiresAt,
-      location: {
-        latitude: -1.2921,
-        longitude: 36.8219,
-        accuracy: 10
-      },
-      instructorId,
-      sessionId: `session-${now}`
     };
+
+    const jsonString = JSON.stringify(qrData);
+    const encrypted = CryptoJS.AES.encrypt(jsonString, SECRET_KEY).toString();
     
-    return {
-      ...qrData,
-      signature: this.generateSignature(qrData)
+    return encrypted;
+  }
+
+  // Decrypt and validate QR code data
+  static decryptQRData(encryptedData: string): QRCodeData | null {
+    try {
+      const decrypted = CryptoJS.AES.decrypt(encryptedData, SECRET_KEY);
+      const jsonString = decrypted.toString(CryptoJS.enc.Utf8);
+      
+      if (!jsonString) {
+        console.error('Failed to decrypt QR data');
+        return null;
+      }
+
+      const qrData: QRCodeData = JSON.parse(jsonString);
+      
+      // Validate timestamp
+      if (Date.now() > qrData.expiresAt) {
+        console.error('QR code has expired');
+        return null;
+      }
+
+      return qrData;
+    } catch (error) {
+      console.error('Error decrypting QR data:', error);
+      return null;
+    }
+  }
+
+  // Validate QR code for a specific session
+  static validateQRCode(encryptedData: string, expectedSessionId: string): boolean {
+    const qrData = this.decryptQRData(encryptedData);
+    
+    if (!qrData) {
+      return false;
+    }
+
+    // Check if session ID matches
+    if (qrData.sessionId !== expectedSessionId) {
+      console.error('Session ID mismatch');
+      return false;
+    }
+
+    // Check if QR code is still valid
+    if (Date.now() > qrData.expiresAt) {
+      console.error('QR code expired');
+      return false;
+    }
+
+    return true;
+  }
+
+  // Generate a simple QR code for testing
+  static generateTestQR(sessionId: string, courseId: string): string {
+    const qrData: QRCodeData = {
+      sessionId,
+      courseId,
+      timestamp: Date.now(),
+      expiresAt: Date.now() + (15 * 60 * 1000), // 15 minutes
     };
-  }
-  
-  // Calculate distance between two coordinates in meters
-  static calculateDistance(
-    lat1: number, 
-    lon1: number, 
-    lat2: number, 
-    lon2: number
-  ): number {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI/180;
-    const φ2 = lat2 * Math.PI/180;
-    const Δφ = (lat2-lat1) * Math.PI/180;
-    const Δλ = (lon2-lon1) * Math.PI/180;
 
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c;
+    return JSON.stringify(qrData);
   }
-  
-  // Validate location proximity (within specified radius)
-  static isLocationValid(
-    userLat: number,
-    userLon: number,
-    targetLat: number,
-    targetLon: number,
-    maxDistance: number = 100 // meters
-  ): boolean {
-    const distance = this.calculateDistance(userLat, userLon, targetLat, targetLon);
-    return distance <= maxDistance;
+
+  // Parse test QR code
+  static parseTestQR(qrString: string): QRCodeData | null {
+    try {
+      return JSON.parse(qrString) as QRCodeData;
+    } catch (error) {
+      console.error('Error parsing test QR code:', error);
+      return null;
+    }
+  }
+
+  // Check if QR code is expired
+  static isExpired(qrData: QRCodeData): boolean {
+    return Date.now() > qrData.expiresAt;
+  }
+
+  // Get time remaining for QR code
+  static getTimeRemaining(qrData: QRCodeData): number {
+    const remaining = qrData.expiresAt - Date.now();
+    return Math.max(0, remaining);
+  }
+
+  // Format time remaining as string
+  static formatTimeRemaining(qrData: QRCodeData): string {
+    const remaining = this.getTimeRemaining(qrData);
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 }

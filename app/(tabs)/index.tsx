@@ -1,18 +1,45 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
+import { useAttendanceStore } from '@/store/attendanceStore';
+import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import colors from '@/constants/colors';
+import { BeaconStatus } from '@/components/BeaconStatus';
+import { AttendanceStats } from '@/components/AttendanceStats';
+import { useBeacon } from '@/hooks/useBeacon';
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = colors[isDark ? 'dark' : 'light'];
+  const { themeColors } = useThemeStore();
+  const { fetchAttendanceRecords } = useAttendanceStore();
+  const { isScanning, currentSession, attendanceMarked, isConnected } = useBeacon();
   const router = useRouter();
 
-  console.log('HomeScreen - rendering with user:', user?.id);
+  console.log('HomeScreen: Rendering with user:', user?.id);
+
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
+
+  useEffect(() => {
+    console.log('HomeScreen: useEffect triggered with user:', user?.id);
+    if (user) {
+      fetchAttendanceRecords();
+    }
+  }, [user, fetchAttendanceRecords]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -39,61 +66,67 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Welcome Header */}
         <View style={styles.welcomeHeader}>
           <View style={styles.welcomeTextContainer}>
-            <Text style={[styles.greeting, { color: themeColors.textSecondary }]}>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
               {getGreeting()},
             </Text>
-            <Text style={[styles.welcomeName, { color: themeColors.text }]}>
+            <Text style={[styles.welcomeName, { color: colors.text }]}>
               {user?.firstName || 'Student'}!
             </Text>
           </View>
           <TouchableOpacity 
-            style={[styles.profileButton, { backgroundColor: themeColors.card }]}
+            style={[styles.profileButton, { backgroundColor: colors.card }]}
             onPress={() => handleQuickAction('settings')}
           >
-            <MaterialCommunityIcons name="account" size={24} color={themeColors.primary} />
+            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
+
+        {/* Beacon Status */}
+        <BeaconStatus />
+
+        {/* Attendance Stats */}
+        <AttendanceStats />
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            style={[styles.actionButton, { backgroundColor: colors.card }]}
             onPress={() => handleQuickAction('scan')}
           >
-            <Ionicons name="qr-code" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>Scan QR Code</Text>
+            <Ionicons name="qr-code" size={24} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.text }]}>Scan QR Code</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            style={[styles.actionButton, { backgroundColor: colors.card }]}
             onPress={() => handleQuickAction('courses')}
           >
-            <Ionicons name="book" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>View Courses</Text>
+            <Ionicons name="book" size={24} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.text }]}>View Courses</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: themeColors.card }]}
+            style={[styles.actionButton, { backgroundColor: colors.card }]}
             onPress={() => handleQuickAction('history')}
           >
-            <Ionicons name="time" size={24} color={themeColors.primary} />
-            <Text style={[styles.actionText, { color: themeColors.text }]}>Attendance History</Text>
+            <Ionicons name="time" size={24} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.text }]}>Attendance History</Text>
           </TouchableOpacity>
         </View>
 
         {/* Welcome Message */}
-        <View style={[styles.welcomeCard, { backgroundColor: themeColors.card }]}>
-          <MaterialCommunityIcons name="school" size={32} color={themeColors.primary} />
-          <Text style={[styles.welcomeTitle, { color: themeColors.text }]}>
+        <View style={[styles.welcomeCard, { backgroundColor: colors.card }]}>
+          <MaterialCommunityIcons name="school" size={32} color={colors.primary} />
+          <Text style={[styles.welcomeTitle, { color: colors.text }]}>
             Welcome to Daystar University
           </Text>
-          <Text style={[styles.welcomeMessage, { color: themeColors.textSecondary }]}>
-            The app is working! You can now navigate between tabs.
+          <Text style={[styles.welcomeMessage, { color: colors.textSecondary }]}>
+            Use the QR code scanner to record your attendance when your instructor displays a QR code.
           </Text>
         </View>
       </ScrollView>
@@ -155,6 +188,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  sessionCard: {
+    padding: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sessionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  sessionText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
   welcomeCard: {
     padding: 24,
     borderRadius: 16,
@@ -171,5 +222,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  successCard: {
+    padding: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 8,
+    textAlign: 'center',
+    color: '#FFFFFF',
+  },
+  successMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    color: '#FFFFFF',
+    opacity: 0.9,
   },
 }); 

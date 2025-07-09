@@ -8,7 +8,7 @@ import {
   TextStyle,
   Platform
 } from 'react-native';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeStore } from '@/store/themeStore';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
 type ButtonSize = 'small' | 'medium' | 'large';
@@ -18,9 +18,8 @@ interface ButtonProps {
   onPress: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
-  isLoading?: boolean;
   disabled?: boolean;
-  icon?: React.ReactNode;
+  loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -30,13 +29,28 @@ export default function Button({
   onPress,
   variant = 'primary',
   size = 'medium',
-  isLoading = false,
   disabled = false,
-  icon,
+  loading = false,
   style,
   textStyle,
 }: ButtonProps) {
-  const { colors } = useTheme();
+  const { themeColors } = useThemeStore();
+  
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#F7F9FC',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#00AEEF',
+    secondary: '#3DDAB4',
+    border: '#E8ECF4',
+    success: '#34C759',
+    warning: '#FF9500',
+    error: '#FF3B30',
+    inactive: '#C5C6C7',
+    highlight: '#E6F7FE',
+  };
   
   // Determine button styles based on variant
   const getButtonStyle = () => {
@@ -149,27 +163,23 @@ export default function Button({
     <TouchableOpacity
       style={combinedStyles}
       onPress={onPress}
-      disabled={disabled || isLoading}
+      disabled={disabled || loading}
       activeOpacity={0.8}
       // Better touch feedback for mobile
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
     >
-      {isLoading ? (
+      {loading ? (
         <ActivityIndicator color={textColor} size="small" />
       ) : (
-        <>
-          {icon && <>{icon}</>}
-          <Text
-            style={StyleSheet.flatten([
-              styles.text,
-              { color: textColor, fontSize },
-              icon && styles.textWithIcon,
-              textStyle,
-            ])}
-          >
-            {title}
-          </Text>
-        </>
+        <Text
+          style={StyleSheet.flatten([
+            styles.text,
+            { color: textColor, fontSize },
+            textStyle,
+          ])}
+        >
+          {title}
+        </Text>
       )}
     </TouchableOpacity>
   );
