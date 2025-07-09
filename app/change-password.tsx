@@ -15,10 +15,12 @@ import { useTheme } from '@/hooks/useTheme';
 import { Feather } from '@expo/vector-icons';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { themeColors } = useTheme();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -26,8 +28,9 @@ export default function ChangePasswordScreen() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuthStore();
   
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     // Validate inputs
     if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
@@ -44,23 +47,45 @@ export default function ChangePasswordScreen() {
       return;
     }
     
-    // Simulate password change
+    if (!user?.email) {
+      Alert.alert('Error', 'User email not found');
+      return;
+    }
+    
     setIsLoading(true);
     
-    // Mock API call
-    setTimeout(() => {
+    // Re-authenticate user with current password
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (signInError) {
       setIsLoading(false);
-      Alert.alert(
-        'Success', 
-        'Your password has been changed successfully',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
-    }, 1500);
+      Alert.alert('Error', 'Current password is incorrect');
+      return;
+    }
+    
+    // Update password
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    setIsLoading(false);
+    if (updateError) {
+      Alert.alert('Error', updateError.message || 'Failed to change password');
+      return;
+    }
+    // Clear input fields and show success dialog, but do not navigate away
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    Alert.alert(
+      'Success',
+      'Your password has been changed successfully',
+      [{ text: 'OK' }]
+    );
   };
   
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: themeColors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 20}
     >
@@ -70,27 +95,27 @@ export default function ChangePasswordScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Card elevated style={styles.card}>
-          <Text style={[styles.title, { color: colors.text }]}>
+          <Text style={[styles.title, { color: themeColors.text }]}>
             Change Your Password
           </Text>
           
-          <Text style={[styles.description, { color: colors.textSecondary }]}>
+          <Text style={[styles.description, { color: themeColors.textSecondary }]}>
             Create a strong password that you don't use for other accounts
           </Text>
           
           <View style={styles.inputSection}>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>
+            <Text style={[styles.inputLabel, { color: themeColors.text }]}>
               Current Password
             </Text>
             <View style={[styles.inputContainer, { 
-              backgroundColor: colors.card,
-              borderColor: colors.border
+              backgroundColor: themeColors.card,
+              borderColor: themeColors.border
             }]}>
-              <Feather name="lock" size={20} color={colors.textSecondary} />
+              <Feather name="lock" size={20} color={themeColors.textSecondary} />
               <TextInput
-                style={[styles.input, { color: colors.text }]}
+                style={[styles.input, { color: themeColors.text }]}
                 placeholder="Enter current password"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={themeColors.textSecondary}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
                 secureTextEntry={!showCurrentPassword}
@@ -100,27 +125,27 @@ export default function ChangePasswordScreen() {
                 style={styles.eyeIcon}
               >
                 {showCurrentPassword ? (
-                  <Feather name="eye-off" size={20} color={colors.textSecondary} />
+                  <Feather name="eye-off" size={20} color={themeColors.textSecondary} />
                 ) : (
-                  <Feather name="eye" size={20} color={colors.textSecondary} />
+                  <Feather name="eye" size={20} color={themeColors.textSecondary} />
                 )}
               </TouchableOpacity>
             </View>
           </View>
           
           <View style={styles.inputSection}>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>
+            <Text style={[styles.inputLabel, { color: themeColors.text }]}>
               New Password
             </Text>
             <View style={[styles.inputContainer, { 
-              backgroundColor: colors.card,
-              borderColor: colors.border
+              backgroundColor: themeColors.card,
+              borderColor: themeColors.border
             }]}>
-              <Feather name="lock" size={20} color={colors.textSecondary} />
+              <Feather name="lock" size={20} color={themeColors.textSecondary} />
               <TextInput
-                style={[styles.input, { color: colors.text }]}
+                style={[styles.input, { color: themeColors.text }]}
                 placeholder="Enter new password"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={themeColors.textSecondary}
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry={!showNewPassword}
@@ -130,27 +155,27 @@ export default function ChangePasswordScreen() {
                 style={styles.eyeIcon}
               >
                 {showNewPassword ? (
-                  <Feather name="eye-off" size={20} color={colors.textSecondary} />
+                  <Feather name="eye-off" size={20} color={themeColors.textSecondary} />
                 ) : (
-                  <Feather name="eye" size={20} color={colors.textSecondary} />
+                  <Feather name="eye" size={20} color={themeColors.textSecondary} />
                 )}
               </TouchableOpacity>
             </View>
           </View>
           
           <View style={styles.inputSection}>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>
+            <Text style={[styles.inputLabel, { color: themeColors.text }]}>
               Confirm New Password
             </Text>
             <View style={[styles.inputContainer, { 
-              backgroundColor: colors.card,
-              borderColor: colors.border
+              backgroundColor: themeColors.card,
+              borderColor: themeColors.border
             }]}>
-              <Feather name="lock" size={20} color={colors.textSecondary} />
+              <Feather name="lock" size={20} color={themeColors.textSecondary} />
               <TextInput
-                style={[styles.input, { color: colors.text }]}
+                style={[styles.input, { color: themeColors.text }]}
                 placeholder="Confirm new password"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={themeColors.textSecondary}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
@@ -160,33 +185,33 @@ export default function ChangePasswordScreen() {
                 style={styles.eyeIcon}
               >
                 {showConfirmPassword ? (
-                  <Feather name="eye-off" size={20} color={colors.textSecondary} />
+                  <Feather name="eye-off" size={20} color={themeColors.textSecondary} />
                 ) : (
-                  <Feather name="eye" size={20} color={colors.textSecondary} />
+                  <Feather name="eye" size={20} color={themeColors.textSecondary} />
                 )}
               </TouchableOpacity>
             </View>
           </View>
           
           <View style={styles.passwordRequirements}>
-            <Text style={[styles.requirementsTitle, { color: colors.text }]}>
+            <Text style={[styles.requirementsTitle, { color: themeColors.text }]}>
               Password Requirements:
             </Text>
             <View style={styles.requirementItem}>
-              <View style={[styles.bulletPoint, { backgroundColor: colors.primary }]} />
-              <Text style={[styles.requirementText, { color: colors.textSecondary }]}>
+              <View style={[styles.bulletPoint, { backgroundColor: themeColors.primary }]} />
+              <Text style={[styles.requirementText, { color: themeColors.textSecondary }]}>
                 At least 8 characters long
               </Text>
             </View>
             <View style={styles.requirementItem}>
-              <View style={[styles.bulletPoint, { backgroundColor: colors.primary }]} />
-              <Text style={[styles.requirementText, { color: colors.textSecondary }]}>
+              <View style={[styles.bulletPoint, { backgroundColor: themeColors.primary }]} />
+              <Text style={[styles.requirementText, { color: themeColors.textSecondary }]}>
                 Include at least one uppercase letter
               </Text>
             </View>
             <View style={styles.requirementItem}>
-              <View style={[styles.bulletPoint, { backgroundColor: colors.primary }]} />
-              <Text style={[styles.requirementText, { color: colors.textSecondary }]}>
+              <View style={[styles.bulletPoint, { backgroundColor: themeColors.primary }]} />
+              <Text style={[styles.requirementText, { color: themeColors.textSecondary }]}>
                 Include at least one number
               </Text>
             </View>
@@ -198,7 +223,7 @@ export default function ChangePasswordScreen() {
               onPress={handleChangePassword}
               variant="primary"
               size="large"
-              isLoading={isLoading}
+              loading={isLoading}
             />
           </View>
         </Card>

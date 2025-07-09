@@ -196,6 +196,7 @@ function RootLayoutNav() {
                       currentPath === '/courses' || 
                       currentPath === '/history' || 
                       currentPath === '/settings';
+      const isOnChangePassword = currentPath === '/change-password';
 
       console.log('Navigation paths - isOnAuth:', isOnAuth, 'isOnLogin:', isOnLogin, 'isOnSelectUniversity:', isOnSelectUniversity, 'isOnTabs:', isOnTabs);
       console.log('Current path details:', { currentPath, pathname, isOnTabs });
@@ -211,12 +212,12 @@ function RootLayoutNav() {
           router.replace('/(auth)/login');
         }
       } else {
-        // Only navigate to tabs if not already on tabs or auth pages
-        if (!isOnTabs && !isOnAuth) {
+        // Only navigate to tabs if not already on tabs, auth, or change-password page
+        if (!isOnTabs && !isOnAuth && !isOnChangePassword) {
           console.log('Authenticated, navigating to tabs index');
           router.replace('/(tabs)');
         } else {
-          console.log('Already on tabs or auth, no navigation needed');
+          console.log('Already on tabs, auth, or change-password, no navigation needed');
         }
       }
     }
