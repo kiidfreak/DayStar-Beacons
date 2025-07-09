@@ -190,9 +190,10 @@ export class DeviceBindingService {
    */
   static async requestDeviceChange(userId: string, reason: string): Promise<boolean> {
     try {
+      console.log('[DeviceChange] Request initiated:', { userId, reason });
       const currentDeviceInfo = await this.getDeviceInfo();
-      
-      const { error } = await supabase
+      console.log('[DeviceChange] Current device info:', currentDeviceInfo);
+      const { error, data } = await supabase
         .from('device_change_requests')
         .insert({
           user_id: userId,
@@ -201,15 +202,15 @@ export class DeviceBindingService {
           status: 'pending',
           requested_at: new Date().toISOString(),
         });
-
+      console.log('[DeviceChange] Insert result:', { error, data });
       if (error) {
-        console.error('Error requesting device change:', error);
+        console.error('[DeviceChange] Error requesting device change:', error);
         throw error;
       }
-
+      console.log('[DeviceChange] Device change request successful');
       return true;
     } catch (error) {
-      console.error('Error in requestDeviceChange:', error);
+      console.error('[DeviceChange] Error in requestDeviceChange:', error);
       throw error;
     }
   }

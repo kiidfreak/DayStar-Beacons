@@ -34,9 +34,17 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     console.log('SettingsScreen: useEffect triggered');
-    // Example: fetch device ID from user or device info
-    setDeviceId(user?.deviceId || 'N/A');
-  }, [user]);
+    // Fetch device ID from DeviceBindingService
+    async function fetchDeviceId() {
+      try {
+        const info = await DeviceBindingService.getDeviceInfo();
+        setDeviceId(info.deviceId);
+      } catch (e) {
+        setDeviceId('Unavailable');
+      }
+    }
+    fetchDeviceId();
+  }, []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -127,63 +135,10 @@ export default function SettingsScreen() {
             </Text>
           </View>
           <Text style={{ color: colors.textSecondary }}>Device ID: {deviceId}</Text>
-          <TouchableOpacity
-            style={{ marginTop: 8, backgroundColor: colors.primary, borderRadius: 8, padding: 8, alignSelf: 'flex-start' }}
-            onPress={async () => {
-              if (!user?.id) return;
-              let reason = '';
-              Alert.prompt(
-                'Request Device Change',
-                'Please provide a reason for requesting a device change:',
-                [
-                  {
-                    text: 'Cancel',
-                    style: 'cancel',
-                  },
-                  {
-                    text: 'Submit',
-                    onPress: async (input) => {
-                      reason = input ?? '';
-                      if (!reason) {
-                        Alert.alert('Reason required', 'Please provide a reason.');
-                        return;
-                      }
-                      try {
-                        const success = await DeviceBindingService.requestDeviceChange(user.id, reason);
-                        if (success) {
-                          Alert.alert('Request Sent', 'Your device change request has been submitted.');
-                        } else {
-                          Alert.alert('Error', 'Failed to submit device change request.');
-                        }
-                      } catch (err) {
-                        Alert.alert('Error', 'Failed to submit device change request.');
-                      }
-                    },
-                  },
-                ],
-                'plain-text'
-              );
-            }}
-          >
-            <Text style={{ color: '#FFF' }}>Request Device Change</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Notifications Toggle */}
-        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="bell" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Notifications
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={{ marginTop: 8, backgroundColor: notificationsEnabled ? colors.success : colors.inactive, borderRadius: 8, padding: 8, alignSelf: 'flex-start' }}
-            onPress={() => setNotificationsEnabled(v => !v)}
-          >
-            <Text style={{ color: '#FFF' }}>{notificationsEnabled ? 'Enabled' : 'Disabled'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Removed notifications section */}
 
         {/* Change Password */}
         <TouchableOpacity

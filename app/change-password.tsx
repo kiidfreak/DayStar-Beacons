@@ -72,14 +72,14 @@ export default function ChangePasswordScreen() {
       Alert.alert('Error', updateError.message || 'Failed to change password');
       return;
     }
-    // Clear input fields and show success dialog, but do not navigate away
+    // Clear input fields and show success dialog, then navigate to login
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
     Alert.alert(
       'Success',
       'Your password has been changed successfully',
-      [{ text: 'OK' }]
+      [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
     );
   };
   
