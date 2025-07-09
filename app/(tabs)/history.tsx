@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -14,22 +14,36 @@ export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<{ total: number; present: number; absent: number }>({ total: 0, present: 0, absent: 0 });
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const fetchHistory = useCallback(async () => {
     if (user?.id) {
-      AttendanceService.getStudentAttendance(user.id)
-        .then(data => {
-          setRecords(data);
-          // Calculate analytics
-          const total = data.length;
-          const present = data.filter(r => r.status === 'present').length;
-          const absent = data.filter(r => r.status === 'absent').length;
-          setAnalytics({ total, present, absent });
-        })
-        .catch(() => setRecords([]))
-        .finally(() => setLoading(false));
+      setLoading(true);
+      try {
+        const data = await AttendanceService.getStudentAttendance(user.id);
+        setRecords(data);
+        // Calculate analytics
+        const total = data.length;
+        const present = data.filter(r => r.status === 'present').length;
+        const absent = data.filter(r => r.status === 'absent').length;
+        setAnalytics({ total, present, absent });
+      } catch {
+        setRecords([]);
+      } finally {
+        setLoading(false);
+      }
     }
   }, [user?.id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchHistory();
+    setRefreshing(false);
+  }, [fetchHistory]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   console.log('HistoryScreen: Rendering with user:', user?.id);
 
@@ -62,7 +76,13 @@ export default function HistoryScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         {/* Welcome Header */}
         <View style={styles.welcomeHeader}>
           <View style={styles.welcomeTextContainer}>

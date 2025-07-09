@@ -66,7 +66,7 @@ export default function RegisterScreen() {
     setLoadingCourses(true);
     try {
       // Get all available courses for registration (no student ID yet)
-      const courses = await CourseService.getAvailableCourses('', '');
+      const courses = await CourseService.getAvailableCourses('', undefined);
       setAvailableCourses(courses);
     } catch (error) {
       console.error('Error loading courses:', error);

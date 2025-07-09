@@ -4,6 +4,8 @@ Created by Nexus labs
 
 npx expo start -c
 
+npm install
+
 npx expo run:android
 
 

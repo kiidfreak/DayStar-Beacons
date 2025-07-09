@@ -188,7 +188,7 @@ function RootLayoutNav() {
     if (hydrated) {
       console.log('Navigation check - isAuthenticated:', isAuthenticated, 'user:', user?.id, 'university:', university, 'pathname:', pathname);
       const currentPath = pathname || '';
-      const isOnAuth = currentPath.startsWith('/(auth)');
+      const isOnAuth = currentPath.startsWith('/(auth)') || currentPath === '/register';
       const isOnLogin = currentPath === '/(auth)/login';
       const isOnSelectUniversity = currentPath === '/(auth)/select-university';
       const isOnTabs = currentPath.startsWith('/(tabs)') || 
@@ -197,6 +197,7 @@ function RootLayoutNav() {
                       currentPath === '/history' || 
                       currentPath === '/settings';
       const isOnChangePassword = currentPath === '/change-password';
+      const isOnQRScanner = currentPath === '/qr-scanner';
 
       console.log('Navigation paths - isOnAuth:', isOnAuth, 'isOnLogin:', isOnLogin, 'isOnSelectUniversity:', isOnSelectUniversity, 'isOnTabs:', isOnTabs);
       console.log('Current path details:', { currentPath, pathname, isOnTabs });
@@ -207,17 +208,17 @@ function RootLayoutNav() {
           router.replace('/(auth)/select-university');
         }
       } else if (!isAuthenticated || !user) {
-        if (!isOnLogin) {
+        if (!isOnLogin && !isOnAuth) {
           console.log('University selected, not authenticated, navigating to login');
           router.replace('/(auth)/login');
         }
       } else {
-        // Only navigate to tabs if not already on tabs, auth, or change-password page
-        if (!isOnTabs && !isOnAuth && !isOnChangePassword) {
+        // Only navigate to tabs if not already on tabs, auth, change-password, or qr-scanner page
+        if (!isOnTabs && !isOnAuth && !isOnChangePassword && !isOnQRScanner) {
           console.log('Authenticated, navigating to tabs index');
           router.replace('/(tabs)');
         } else {
-          console.log('Already on tabs, auth, or change-password, no navigation needed');
+          console.log('Already on tabs, auth, change-password, or qr-scanner, no navigation needed');
         }
       }
     }

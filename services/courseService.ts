@@ -6,8 +6,8 @@ export interface Enrollment {
   id: string;
   student_id: string;
   course_id: string;
-  status: 'enrolled' | 'pending' | 'dropped';
-  enrolled_at: string;
+  status: 'active' | 'inactive' | 'pending';
+  enrollment_date: string;
   course: Course;
 }
 
@@ -102,22 +102,24 @@ export class CourseService {
    */
   static async getAvailableCourses(schoolId: string, studentId: string | null): Promise<Course[]> {
     try {
-      // Get enrolled course IDs
-      const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('student_course_enrollments')
-        .select('course_id')
-        .eq('student_id', studentId)
-        .eq('status', 'active');
+      let enrolledIds: string[] = [];
+      if (studentId) {
+        // Get enrolled course IDs only if studentId is provided
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id')
+          .eq('student_id', studentId)
+          .eq('status', 'active');
 
-      if (enrollmentsError) {
-        console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
-        throw enrollmentsError;
+        if (enrollmentsError) {
+          console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
+          throw enrollmentsError;
+        }
+        enrolledIds = enrollments?.map(e => e.course_id) || [];
+        console.log('getAvailableCourses: enrolledIds', enrolledIds);
       }
 
-      const enrolledIds = enrollments?.map(e => e.course_id) || [];
-      console.log('getAvailableCourses: enrolledIds', enrolledIds);
-
-      // Get all courses NOT in enrolledIds
+      // Get all courses NOT in enrolledIds, or all courses if no studentId
       let query = supabase
         .from('courses')
         .select(`
@@ -361,7 +363,7 @@ export class CourseService {
   static async getEnrollmentStatus(
     studentId: string, 
     courseId: string
-  ): Promise<'enrolled' | 'pending' | 'not_enrolled'> {
+  ): Promise<'active' | 'pending' | 'not_enrolled'> {
     try {
       // Check enrollment status in student_course_enrollments table
       const { data, error } = await supabase
@@ -383,7 +385,7 @@ export class CourseService {
       // Map status to enrollment state
       switch (data.status) {
         case 'active':
-          return 'enrolled';
+          return 'active';
         case 'pending':
           return 'pending';
         case 'inactive':
@@ -473,7 +475,7 @@ export class CourseService {
           student_id,
           course_id,
           status,
-          enrolled_at,
+          enrollment_date,
           courses!inner(
             id,
             name,
@@ -487,7 +489,7 @@ export class CourseService {
           )
         `)
         .eq('student_id', studentId)
-        .order('enrolled_at', { ascending: false });
+        .order('enrollment_date', { ascending: false });
 
       if (error) {
         console.error('Error fetching enrolled courses:', error);
@@ -534,8 +536,8 @@ export class CourseService {
         .insert({
           student_id: user.id,
           course_id: courseId,
-          status: 'enrolled',
-          enrolled_at: new Date().toISOString(),
+          status: 'active', // changed from 'enrolled' to 'active'
+          enrollment_date: new Date().toISOString(),
         });
 
       if (error) {
@@ -560,7 +562,7 @@ export class CourseService {
 
       const { error } = await supabase
         .from('student_course_enrollments')
-        .update({ status: 'dropped' })
+        .update({ status: 'inactive' })
         .eq('student_id', user.id)
         .eq('course_id', courseId);
 
@@ -610,7 +612,7 @@ export class CourseService {
   }
 
   // Get enrollment status for a course
-  static async getEnrollmentStatus(courseId: string): Promise<'enrolled' | 'pending' | 'dropped' | 'not-enrolled'> {
+  static async getEnrollmentStatus(courseId: string): Promise<'active' | 'pending' | 'dropped' | 'not-enrolled'> {
     try {
       const { user } = useAuthStore.getState();
       if (!user) {

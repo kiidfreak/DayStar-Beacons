@@ -175,5 +175,7 @@ dependencies {
         implementation jscFlavor
     }
     
+    implementation(project(path: ':react-native-camera', configuration: 'generalDebug'))
+    implementation(project(path: ':react-native-camera', configuration: 'generalRelease'))
 
 }
