@@ -4,6 +4,8 @@ import { BleManager } from 'react-native-ble-plx';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { supabase } from '@/lib/supabase';
+import * as Location from 'expo-location';
+import * as Linking from 'expo-linking';
 
 interface BeaconData {
   id: string;
@@ -23,10 +25,10 @@ interface BeaconSession {
 }
 
 // Create a singleton BleManager instance
-let bleManager: BleManager | null = null;
-let isInitialized = false;
+//let bleManager: BleManager|any = new BleManager();
+//let isInitialized = false;
 
-const getBleManager = () => {
+/* const getBleManager = () => {
   if (!bleManager || !isInitialized) {
     console.log('🔧 Creating new BleManager instance');
     try {
@@ -39,7 +41,7 @@ const getBleManager = () => {
     }
   }
   return bleManager;
-};
+}; */
 
 export const useBeacon = () => {
   const [isScanning, setIsScanning] = useState(false);
@@ -58,7 +60,7 @@ export const useBeacon = () => {
   const continuousScanRef = useRef<number | null>(null);
 
   // Get the BleManager instance
-  const manager = getBleManager();
+  const manager = new BleManager();
 
   // Request Bluetooth permissions
   const requestBluetoothPermissions = useCallback(async () => {
@@ -83,22 +85,44 @@ export const useBeacon = () => {
         if (locationGranted === PermissionsAndroid.RESULTS.GRANTED) {
           console.log('✅ Location permission granted');
           
-          // Also request Bluetooth permission if available
-          if (Platform.Version >= 31) { // Android 12+
+          // Android 12+ (API 31+) requires additional Bluetooth permissions
+          if (Platform.Version >= 31) {
             try {
-              const bluetoothGranted = await PermissionsAndroid.request(
+              const bluetoothScanGranted = await PermissionsAndroid.request(
                 'android.permission.BLUETOOTH_SCAN',
                 {
-                  title: 'Bluetooth Permission',
-                  message: 'This app needs Bluetooth permission to detect attendance beacons.',
+                  title: 'Bluetooth Scan Permission',
+                  message: 'This app needs Bluetooth scan permission to detect attendance beacons.',
                   buttonNeutral: 'Ask Me Later',
                   buttonNegative: 'Cancel',
                   buttonPositive: 'OK',
                 }
               );
-              console.log('🔐 Bluetooth permission result:', bluetoothGranted);
+              console.log('🔐 BLUETOOTH_SCAN permission result:', bluetoothScanGranted);
+              const bluetoothConnectGranted = await PermissionsAndroid.request(
+                'android.permission.BLUETOOTH_CONNECT',
+                {
+                  title: 'Bluetooth Connect Permission',
+                  message: 'This app needs Bluetooth connect permission to interact with beacons.',
+                  buttonNeutral: 'Ask Me Later',
+                  buttonNegative: 'Cancel',
+                  buttonPositive: 'OK',
+                }
+              );
+              console.log('🔐 BLUETOOTH_CONNECT permission result:', bluetoothConnectGranted);
+              const bluetoothAdvertiseGranted = await PermissionsAndroid.request(
+                'android.permission.BLUETOOTH_ADVERTISE',
+                {
+                  title: 'Bluetooth Advertise Permission',
+                  message: 'This app needs Bluetooth advertise permission for BLE operations.',
+                  buttonNeutral: 'Ask Me Later',
+                  buttonNegative: 'Cancel',
+                  buttonPositive: 'OK',
+                }
+              );
+              console.log('🔐 BLUETOOTH_ADVERTISE permission result:', bluetoothAdvertiseGranted);
             } catch (bluetoothError) {
-              console.log('⚠️ Bluetooth permission not available:', bluetoothError);
+              console.log('⚠️ Bluetooth 12+ permissions not available:', bluetoothError);
             }
           }
           
@@ -159,6 +183,23 @@ export const useBeacon = () => {
     if (!user) {
       console.log('❌ User not authenticated, skipping beacon scan');
       return;
+    }
+
+    // Check if location services are enabled (required for BLE scan on Android)
+    if (Platform.OS === 'android') {
+      const locationEnabled = await Location.hasServicesEnabledAsync();
+      if (!locationEnabled) {
+        Alert.alert(
+          'Enable Location Services',
+          'Location services (GPS) must be enabled to scan for Bluetooth beacons. Please enable location services in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+          ]
+        );
+        setError('Location services (GPS) must be enabled for BLE scanning.');
+        return;
+      }
     }
 
     if (!manager) {
@@ -228,19 +269,27 @@ export const useBeacon = () => {
           allowDuplicates: false,
           scanMode: 2, // SCAN_MODE_LOW_LATENCY
         },
-        (scanError, device) => {
+        (scanError: any, device: any) => {
           console.log('📱 Device scan callback triggered');
-          console.log('📱 Scan error:', scanError);
+          if (scanError) {
+            // Improved error logging: include error.reason if available
+            console.log('📱 Scan error:', scanError, scanError?.reason);
+            console.error('❌ Beacon scan error:', scanError, scanError?.reason);
+            let userMessage = '';
+            if (scanError.reason) {
+              userMessage = `BLE scan failed: ${scanError.reason}`;
+            } else if (scanError.message && scanError.message.includes('Unknown error occurred')) {
+              userMessage = 'Bluetooth scan failed due to an unknown error. Please ensure all permissions are granted, location services are enabled, and try restarting the app.';
+            } else {
+              userMessage = scanError.message || scanError.toString() || 'Beacon scan failed';
+            }
+            setError(userMessage);
+            return;
+          }
           console.log('📱 Device found:', device?.name, device?.id);
           console.log('📱 Device RSSI:', device?.rssi);
           console.log('📱 Device isConnectable:', device?.isConnectable);
           
-          if (scanError) {
-            console.error('❌ Beacon scan error:', scanError);
-            setError(scanError.message || scanError.toString() || 'Beacon scan failed');
-            return;
-          }
-
           if (device) {
             console.log('✅ Found device:', device.name || 'Unknown', device.id);
             const beaconData: BeaconData = {
@@ -276,7 +325,7 @@ export const useBeacon = () => {
           console.log('✅ Attendance marked, stopping continuous scan');
           stopContinuousScanning();
         }
-      }, 5000); // Check every 5 seconds
+      }, 30000); // Check every 30 seconds
 
       console.log('✅ Continuous scanning setup complete');
 
@@ -328,7 +377,7 @@ export const useBeacon = () => {
     }
     try {
       console.log('🔗 Attempting to connect to device:', deviceId);
-      const device = await manager.devices([deviceId]).then(devices => devices[0]);
+      const device = await manager.devices([deviceId]).then((devices: any) => devices[0]);
       if (!device) {
         setError('Device not found');
         return;

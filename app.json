@@ -22,7 +22,27 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.uniconnectattendancesystem"
+      "package": "app.rork.uniconnectattendancesystem",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+        }
+      },
+      "rationale": {
+        "android.permission.ACCESS_FINE_LOCATION": "Location access is required to scan for nearby Bluetooth beacons for attendance.",
+        "android.permission.BLUETOOTH_SCAN": "Bluetooth scan permission is required to detect attendance beacons.",
+        "android.permission.BLUETOOTH_CONNECT": "Bluetooth connect permission is required to interact with beacons.",
+        "android.permission.BLUETOOTH_ADVERTISE": "Bluetooth advertise permission is required for BLE operations."
+      }
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -33,10 +53,29 @@
         {
           "origin": "https://rork.com/"
         }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to bluetooth devices"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://rork.com/"
+      },
+      "eas": {
+        "projectId": "90d387a9-a79f-45f6-94a8-a3cbf0882251"
+      }
     }
   }
 }

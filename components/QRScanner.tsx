@@ -10,7 +10,7 @@ interface QRScannerProps {
 }
 
 export default function QRScanner({ onQRCodeScanned, onError, onClose }: QRScannerProps) {
-  const { colors } = useTheme();
+  const { themeColors: colors } = useTheme();
   const [qrCodeInput, setQrCodeInput] = useState('');
 
   const handleSubmit = () => {

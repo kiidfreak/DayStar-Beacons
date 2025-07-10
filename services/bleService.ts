@@ -201,6 +201,18 @@ export class BLEService {
         };
       }
 
+      // Check if location services are enabled (required for BLE scan on Android)
+      if (Platform.OS === 'android') {
+        const locationEnabled = await Location.hasServicesEnabledAsync();
+        if (!locationEnabled) {
+          return {
+            success: false,
+            beacons: [],
+            error: 'Location services (GPS) must be enabled for BLE scanning.'
+          };
+        }
+      }
+
       this.isScanning = true;
       console.log('Starting BLE beacon scan for student:', studentId);
 

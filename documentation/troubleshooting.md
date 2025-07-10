@@ -165,3 +165,39 @@ This guide addresses common issues that may be encountered when using the Univer
 1. Update to the latest app version
 2. Ensure your device meets the minimum requirements
 3. Report specific issues to support with device model information
+
+## BLE Scanning Errors (Android)
+
+### BLE Scan Fails with Unknown Error or No Devices Found
+
+**Symptoms:**
+- "Unknown error occurred. This is probably a bug! Check reason property."
+- BLE scan callback returns undefined devices
+- No beacons detected even when nearby
+
+**Possible Solutions:**
+1. Ensure Bluetooth is enabled on your device
+2. Ensure location services (GPS) are enabled on your device (required for BLE scanning)
+3. Grant all required permissions when prompted:
+   - Location (Fine/Coarse)
+   - Bluetooth (Scan, Connect, Advertise) on Android 12+
+4. If you denied permissions, go to device settings > Apps > [App Name] > Permissions and enable all Bluetooth and Location permissions
+5. Restart the app after changing permissions
+6. Test on a real device (BLE scanning is not supported on most emulators)
+7. If the problem persists, uninstall and reinstall the app to reset permissions
+
+**Developer Notes:**
+- Ensure the following permissions are present in `AndroidManifest.xml`:
+  ```xml
+  <uses-permission android:name="android.permission.BLUETOOTH"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  ```
+- Request all permissions at runtime using `PermissionsAndroid` (for bare React Native) or `expo-location`/`expo-bluetooth` APIs (for Expo)
+- For Android 12+ (API 31+), request `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, and `BLUETOOTH_ADVERTISE` at runtime
+- Always check that location services are enabled before starting BLE scan
+- See `hooks/useBeacon.ts` and `services/bleService.ts` for permission request logic
