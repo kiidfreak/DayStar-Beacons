@@ -21,7 +21,7 @@ interface BeaconSession {
   course_id: string;
   start_time: string;
   end_time: string;
-  is_active: boolean;
+  session_date: string;
 }
 
 // Create a singleton BleManager instance
@@ -52,6 +52,8 @@ export const useBeacon = () => {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [attendanceMarked, setAttendanceMarked] = useState(false);
   const [registeredBeaconMacs, setRegisteredBeaconMacs] = useState<Set<string>>(new Set());
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectedBeaconId, setConnectedBeaconId] = useState<string | null>(null);
   
   const { user } = useAuthStore();
   const { markAttendance } = useAttendanceStore();
@@ -63,24 +65,46 @@ export const useBeacon = () => {
   // Get the BleManager instance
   const manager = new BleManager();
 
-  // Fetch registered beacon MAC addresses on mount
+  // Fetch registered beacon MAC addresses for enrolled courses on mount
   useEffect(() => {
-    const fetchRegisteredBeacons = async () => {
-      const { data, error } = await supabase
-        .from('ble_beacons')
-        .select('mac_address')
-        .eq('is_active', true);
-      if (error) {
-        console.error('Error fetching registered beacons:', error);
+    const fetchAssignedBeacons = async () => {
+      if (!user) return;
+      // Step 1: Get enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('student_course_enrollments')
+        .select('course_id')
+        .eq('student_id', user.id)
+        .eq('status', 'active');
+      if (enrollmentsError || !enrollments || enrollments.length === 0) {
+        setRegisteredBeaconMacs(new Set());
+        setError('Please enroll in a course first.');
         return;
       }
-      const macs = (data || []).map(b => b.mac_address?.toUpperCase());
+      const courseIds = enrollments.map(e => e.course_id);
+      // Step 2: Get assigned beacon MACs for those courses
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('beacon_assignments')
+        .select('beacon:ble_beacons(mac_address)')
+        .in('course_id', courseIds);
+      if (assignmentsError || !assignments) {
+        setRegisteredBeaconMacs(new Set());
+        setError('No beacons assigned to your courses.');
+        return;
+      }
+      const macs = (assignments || [])
+        .map(a => {
+          const beacon = a.beacon as { mac_address?: string } | null;
+          return beacon && typeof beacon.mac_address === 'string'
+            ? beacon.mac_address.toUpperCase()
+            : undefined;
+        })
+        .filter((mac): mac is string => Boolean(mac));
       setRegisteredBeaconMacs(new Set(macs));
-      // Debug: print the MACs loaded from DB
-      console.log('DEBUG: Registered MACs from DB:', macs);
+      // Debug: print the MACs loaded from assignments
+      console.log('DEBUG: Registered MACs from beacon_assignments:', macs);
     };
-    fetchRegisteredBeacons();
-  }, []);
+    fetchAssignedBeacons();
+  }, [user]);
 
   // Request Bluetooth permissions
   const requestBluetoothPermissions = useCallback(async () => {
@@ -200,6 +224,18 @@ export const useBeacon = () => {
 
     if (!user) {
       console.log('❌ User not authenticated, skipping beacon scan');
+      return;
+    }
+
+    // Fetch enrolled courses for the user
+    const { data: enrollments, error: enrollmentsError } = await supabase
+      .from('student_course_enrollments')
+      .select('course_id')
+      .eq('student_id', user.id)
+      .eq('status', 'active');
+    if (enrollmentsError || !enrollments || enrollments.length === 0) {
+      setError('Please enroll in a course first.');
+      setBeacons([]);
       return;
     }
 
@@ -393,83 +429,72 @@ export const useBeacon = () => {
     }
   }, [isScanning, attendanceMarked, manager]);
 
-  // Connect to a specific device by ID
-  const connectToDevice = useCallback(async (deviceId: string) => {
-    if (!manager) {
-      console.log('❌ BleManager not initialized for connectToDevice');
-      setError('Bluetooth manager not available');
-      return;
-    }
-    try {
-      console.log('🔗 Attempting to connect to device:', deviceId);
-      const device = await manager.devices([deviceId]).then((devices: any) => devices[0]);
-      if (!device) {
-        setError('Device not found');
-        return;
-      }
-      if (device.isConnectable) {
-        await device.connect();
-        setIsConnected(true);
-        console.log('✅ Connected to device:', deviceId);
-        // Only after successful connection, check session and mark attendance
-        checkBeaconSessionAndMarkAttendance(deviceId);
-      } else {
-        setError('Device is not connectable');
-        console.log('⚠️ Device is not connectable:', deviceId);
-      }
-    } catch (connectError: any) {
-      setError(connectError?.message || connectError?.toString() || 'Failed to connect');
-      console.error('❌ Failed to connect to device:', connectError);
-    }
-  }, [manager]);
+  // Connect to a specific device by ID (deprecated, now handled directly)
+  // const connectToDevice = useCallback(async (deviceId: string) => {
+  //   ... (remove BLE connection logic)
+  // });
 
   // Check if beacon has an active session and mark attendance
   const checkBeaconSessionAndMarkAttendance = async (macAddress: string) => {
     console.log('🔍 checkBeaconSessionAndMarkAttendance called for:', macAddress);
-    
     try {
       console.log('📊 Querying database for beacon session...');
-      
-      const { data: sessions, error } = await supabase
+      // Get current date and time
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const currentTime = now.toTimeString().split(' ')[0];
+      const { data: session, error } = await supabase
         .from('class_sessions')
-        .select(`
-          id,
-          beacon_id,
-          course_id,
-          start_time,
-          end_time,
-          is_active
-        `)
+        .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
         .eq('beacon_id', macAddress)
-        .eq('is_active', true)
+        .eq('session_date', today)
+        .lte('start_time', currentTime)
+        .gte('end_time', currentTime)
         .single();
-
-      console.log('📊 Database query result:', { sessions, error });
-
+      console.log('📊 Database query result:', { session, error });
       if (error) {
         console.error('❌ Error fetching beacon session:', error);
         setError(error.message || error.toString() || 'Failed to fetch beacon session');
         return;
       }
-
-      if (sessions) {
-        console.log('✅ Active session found for beacon:', sessions);
-        setCurrentSession(sessions);
-        
-        console.log('📝 Marking attendance for session:', sessions.id);
+      if (session) {
+        console.log('✅ Active session found for beacon:', session);
+        setCurrentSession(session);
+        console.log('📝 Marking attendance for session:', session.id, 'session object:', session);
         // Mark attendance for this session
-        const success = await markAttendance(sessions.id, 'beacon');
+        const success = await markAttendance(session.id, 'beacon');
         console.log('📝 Attendance marking result:', success);
-        
         if (success) {
           console.log('✅ Attendance marked successfully for beacon session');
           setAttendanceMarked(true);
           setIsConnected(true);
+          // Insert attendance record into DB
+          try {
+            const { data: attendanceInsert, error: attendanceInsertError } = await supabase
+              .from('attendance_records')
+              .insert([
+                {
+                  session_id: session.id,
+                  student_id: user?.id,
+                  method: 'beacon',
+                  status: 'present',
+                  check_in_time: new Date().toISOString(),
+                },
+              ]);
+            if (attendanceInsertError) {
+              console.error('❌ Error inserting attendance record:', attendanceInsertError);
+            } else {
+              console.log('✅ Attendance record inserted:', attendanceInsert);
+            }
+          } catch (insertErr) {
+            console.error('❌ Exception inserting attendance record:', insertErr);
+          }
         } else {
           console.log('❌ Failed to mark attendance');
         }
       } else {
         console.log('⚠️ No active session found for beacon:', macAddress);
+        setError('No active session found for this beacon.');
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);
@@ -538,6 +563,10 @@ export const useBeacon = () => {
     startContinuousScanning,
     stopContinuousScanning,
     requestBluetoothPermissions,
-    connectToDevice, // <-- expose this
+    // connectToDevice, // Remove this
+    isConnecting,
+    setIsConnecting, // Expose this for external use
+    connectedBeaconId, // <-- expose this
+    checkBeaconSessionAndMarkAttendance, // Expose this for direct use
   };
 };

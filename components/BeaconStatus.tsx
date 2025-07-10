@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBeacon } from '@/hooks/useBeacon';
 import { useThemeStore } from '@/store/themeStore';
@@ -15,7 +15,10 @@ export const BeaconStatus = () => {
     startContinuousScanning,
     stopContinuousScanning,
     requestBluetoothPermissions,
-    connectToDevice,
+    isConnecting, // <-- add this
+    setIsConnecting, // <-- add this
+    connectedBeaconId, // <-- add this
+    checkBeaconSessionAndMarkAttendance, // <-- add this
   } = useBeacon();
   const { themeColors } = useThemeStore();
 
@@ -69,6 +72,18 @@ export const BeaconStatus = () => {
   const handleRequestPermissions = () => {
     console.log('🔘 Permission request button pressed');
     requestBluetoothPermissions();
+  };
+
+  // Handler to stop scanning, mark attendance, then resume scanning
+  const handleMarkAttendance = async (macAddress: string) => {
+    console.log('🔘 Mark Attendance pressed for:', macAddress);
+    stopContinuousScanning();
+    setIsConnecting(true);
+    console.log('🟢 Calling checkBeaconSessionAndMarkAttendance for:', macAddress);
+    await checkBeaconSessionAndMarkAttendance(macAddress);
+    console.log('✅ Finished checkBeaconSessionAndMarkAttendance for:', macAddress);
+    setIsConnecting(false);
+    startContinuousScanning();
   };
 
   console.log('📊 BeaconStatus render - isScanning:', isScanning, 'error:', error, 'beacons:', beacons.length, 'attendanceMarked:', attendanceMarked);
@@ -132,14 +147,23 @@ export const BeaconStatus = () => {
               <Text style={[styles.beaconId, { color: colors.textSecondary }]}>
                 {beacon.macAddress}
               </Text>
-              <TouchableOpacity
-                style={[styles.connectButton, { backgroundColor: colors.primary, marginLeft: 8 }]}
-                onPress={() => connectToDevice(beacon.id)}
-              >
-                <MaterialCommunityIcons name="bluetooth-connect" size={16} color="#FFF" />
-                <Text style={{ color: '#FFF', marginLeft: 4 }}>Connect</Text>
-              </TouchableOpacity>
-              {isConnected && (
+              {attendanceMarked ? (
+                <Text style={{ color: colors.success, marginLeft: 8 }}>Attendance already recorded for this session</Text>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.connectButton, { backgroundColor: colors.primary, marginLeft: 8, opacity: isConnecting ? 0.6 : 1 }]}
+                  onPress={() => handleMarkAttendance(beacon.macAddress)}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <MaterialCommunityIcons name="bluetooth-connect" size={16} color="#FFF" />
+                  )}
+                  <Text style={{ color: '#FFF', marginLeft: 4 }}>{isConnecting ? 'Marking...' : 'Mark Attendance'}</Text>
+                </TouchableOpacity>
+              )}
+              {connectedBeaconId === beacon.id && (
                 <Text style={{ color: colors.success, marginLeft: 8 }}>Connected</Text>
               )}
             </View>
