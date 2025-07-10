@@ -51,6 +51,7 @@ export const useBeacon = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [attendanceMarked, setAttendanceMarked] = useState(false);
+  const [registeredBeaconMacs, setRegisteredBeaconMacs] = useState<Set<string>>(new Set());
   
   const { user } = useAuthStore();
   const { markAttendance } = useAttendanceStore();
@@ -61,6 +62,25 @@ export const useBeacon = () => {
 
   // Get the BleManager instance
   const manager = new BleManager();
+
+  // Fetch registered beacon MAC addresses on mount
+  useEffect(() => {
+    const fetchRegisteredBeacons = async () => {
+      const { data, error } = await supabase
+        .from('ble_beacons')
+        .select('mac_address')
+        .eq('is_active', true);
+      if (error) {
+        console.error('Error fetching registered beacons:', error);
+        return;
+      }
+      const macs = (data || []).map(b => b.mac_address?.toUpperCase());
+      setRegisteredBeaconMacs(new Set(macs));
+      // Debug: print the MACs loaded from DB
+      console.log('DEBUG: Registered MACs from DB:', macs);
+    };
+    fetchRegisteredBeacons();
+  }, []);
 
   // Request Bluetooth permissions
   const requestBluetoothPermissions = useCallback(async () => {
@@ -146,21 +166,19 @@ export const useBeacon = () => {
     }
   }, []);
 
-  // Initialize Bluetooth manager and start scanning when authenticated
+  // Initialize Bluetooth manager and start scanning when authenticated and MACs are loaded
   useEffect(() => {
     console.log('🔧 Initializing Bluetooth manager');
-    
-    // Start scanning automatically when user is authenticated
-    if (user && !isScanning) {
-      console.log('🔧 User authenticated, starting automatic scanning');
+    // Start scanning automatically when user is authenticated and MACs are loaded
+    if (user && !isScanning && registeredBeaconMacs.size > 0) {
+      console.log('🔧 User authenticated and MACs loaded, starting automatic scanning');
       // Delay the start to avoid dependency issues
       setTimeout(() => {
-        if (user && !isScanning) {
+        if (user && !isScanning && registeredBeaconMacs.size > 0) {
           startContinuousScanning();
         }
       }, 1000);
     }
-    
     return () => {
       console.log('🔧 Cleaning up Bluetooth manager');
       if (continuousScanRef.current) {
@@ -170,7 +188,7 @@ export const useBeacon = () => {
         clearInterval(sessionCheckIntervalRef.current);
       }
     };
-  }, [user, isScanning]);
+  }, [user, isScanning, registeredBeaconMacs]);
 
   // Start continuous scanning for beacons
   const startContinuousScanning = useCallback(async () => {
@@ -291,6 +309,13 @@ export const useBeacon = () => {
           console.log('📱 Device isConnectable:', device?.isConnectable);
           
           if (device) {
+            const mac = (device.id || '').toUpperCase();
+            // Debug: print scanned and registered MACs
+            console.log('DEBUG: Scanned device.id:', mac, 'Registered MACs:', Array.from(registeredBeaconMacs));
+            if (!registeredBeaconMacs.has(mac)) {
+              console.log('⛔ Device not a registered beacon:', mac);
+              return;
+            }
             console.log('✅ Found device:', device.name || 'Unknown', device.id);
             const beaconData: BeaconData = {
               id: device.id,
@@ -334,7 +359,7 @@ export const useBeacon = () => {
       setError('Failed to start beacon scanning');
       setIsScanning(false);
     }
-  }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked]);
+  }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked, registeredBeaconMacs]);
 
   // Stop continuous scanning
   const stopContinuousScanning = useCallback(() => {
