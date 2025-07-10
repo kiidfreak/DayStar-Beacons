@@ -4,7 +4,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useEffect } from "react";
 
 export default function NotFoundScreen() {
-  const { colors } = useTheme();
+  const { themeColors } = useTheme();
   const router = useRouter();
   
   // Automatically redirect to home screen
@@ -15,8 +15,8 @@ export default function NotFoundScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Redirecting..." }} />
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Redirecting to home...</Text>
+      <View style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <Text style={[styles.title, { color: themeColors.text }]}>Redirecting to home...</Text>
       </View>
     </>
   );

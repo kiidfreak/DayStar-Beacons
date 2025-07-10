@@ -4,6 +4,8 @@ import { BleManager } from 'react-native-ble-plx';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { supabase } from '@/lib/supabase';
+import * as Location from 'expo-location';
+import * as Linking from 'expo-linking';
 
 interface BeaconData {
   id: string;
@@ -19,14 +21,14 @@ interface BeaconSession {
   course_id: string;
   start_time: string;
   end_time: string;
-  is_active: boolean;
+  session_date: string;
 }
 
 // Create a singleton BleManager instance
-let bleManager: BleManager | null = null;
-let isInitialized = false;
+//let bleManager: BleManager|any = new BleManager();
+//let isInitialized = false;
 
-const getBleManager = () => {
+/* const getBleManager = () => {
   if (!bleManager || !isInitialized) {
     console.log('🔧 Creating new BleManager instance');
     try {
@@ -39,7 +41,7 @@ const getBleManager = () => {
     }
   }
   return bleManager;
-};
+}; */
 
 export const useBeacon = () => {
   const [isScanning, setIsScanning] = useState(false);
@@ -49,6 +51,9 @@ export const useBeacon = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [attendanceMarked, setAttendanceMarked] = useState(false);
+  const [registeredBeaconMacs, setRegisteredBeaconMacs] = useState<Set<string>>(new Set());
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectedBeaconId, setConnectedBeaconId] = useState<string | null>(null);
   
   const { user } = useAuthStore();
   const { markAttendance } = useAttendanceStore();
@@ -58,7 +63,48 @@ export const useBeacon = () => {
   const continuousScanRef = useRef<number | null>(null);
 
   // Get the BleManager instance
-  const manager = getBleManager();
+  const manager = new BleManager();
+
+  // Fetch registered beacon MAC addresses for enrolled courses on mount
+  useEffect(() => {
+    const fetchAssignedBeacons = async () => {
+      if (!user) return;
+      // Step 1: Get enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('student_course_enrollments')
+        .select('course_id')
+        .eq('student_id', user.id)
+        .eq('status', 'active');
+      if (enrollmentsError || !enrollments || enrollments.length === 0) {
+        setRegisteredBeaconMacs(new Set());
+        setError('Please enroll in a course first.');
+        return;
+      }
+      const courseIds = enrollments.map(e => e.course_id);
+      // Step 2: Get assigned beacon MACs for those courses
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('beacon_assignments')
+        .select('beacon:ble_beacons(mac_address)')
+        .in('course_id', courseIds);
+      if (assignmentsError || !assignments) {
+        setRegisteredBeaconMacs(new Set());
+        setError('No beacons assigned to your courses.');
+        return;
+      }
+      const macs = (assignments || [])
+        .map(a => {
+          const beacon = a.beacon as { mac_address?: string } | null;
+          return beacon && typeof beacon.mac_address === 'string'
+            ? beacon.mac_address.toUpperCase()
+            : undefined;
+        })
+        .filter((mac): mac is string => Boolean(mac));
+      setRegisteredBeaconMacs(new Set(macs));
+      // Debug: print the MACs loaded from assignments
+      console.log('DEBUG: Registered MACs from beacon_assignments:', macs);
+    };
+    fetchAssignedBeacons();
+  }, [user]);
 
   // Request Bluetooth permissions
   const requestBluetoothPermissions = useCallback(async () => {
@@ -83,22 +129,44 @@ export const useBeacon = () => {
         if (locationGranted === PermissionsAndroid.RESULTS.GRANTED) {
           console.log('✅ Location permission granted');
           
-          // Also request Bluetooth permission if available
-          if (Platform.Version >= 31) { // Android 12+
+          // Android 12+ (API 31+) requires additional Bluetooth permissions
+          if (Platform.Version >= 31) {
             try {
-              const bluetoothGranted = await PermissionsAndroid.request(
+              const bluetoothScanGranted = await PermissionsAndroid.request(
                 'android.permission.BLUETOOTH_SCAN',
                 {
-                  title: 'Bluetooth Permission',
-                  message: 'This app needs Bluetooth permission to detect attendance beacons.',
+                  title: 'Bluetooth Scan Permission',
+                  message: 'This app needs Bluetooth scan permission to detect attendance beacons.',
                   buttonNeutral: 'Ask Me Later',
                   buttonNegative: 'Cancel',
                   buttonPositive: 'OK',
                 }
               );
-              console.log('🔐 Bluetooth permission result:', bluetoothGranted);
+              console.log('🔐 BLUETOOTH_SCAN permission result:', bluetoothScanGranted);
+              const bluetoothConnectGranted = await PermissionsAndroid.request(
+                'android.permission.BLUETOOTH_CONNECT',
+                {
+                  title: 'Bluetooth Connect Permission',
+                  message: 'This app needs Bluetooth connect permission to interact with beacons.',
+                  buttonNeutral: 'Ask Me Later',
+                  buttonNegative: 'Cancel',
+                  buttonPositive: 'OK',
+                }
+              );
+              console.log('🔐 BLUETOOTH_CONNECT permission result:', bluetoothConnectGranted);
+              const bluetoothAdvertiseGranted = await PermissionsAndroid.request(
+                'android.permission.BLUETOOTH_ADVERTISE',
+                {
+                  title: 'Bluetooth Advertise Permission',
+                  message: 'This app needs Bluetooth advertise permission for BLE operations.',
+                  buttonNeutral: 'Ask Me Later',
+                  buttonNegative: 'Cancel',
+                  buttonPositive: 'OK',
+                }
+              );
+              console.log('🔐 BLUETOOTH_ADVERTISE permission result:', bluetoothAdvertiseGranted);
             } catch (bluetoothError) {
-              console.log('⚠️ Bluetooth permission not available:', bluetoothError);
+              console.log('⚠️ Bluetooth 12+ permissions not available:', bluetoothError);
             }
           }
           
@@ -122,21 +190,19 @@ export const useBeacon = () => {
     }
   }, []);
 
-  // Initialize Bluetooth manager and start scanning when authenticated
+  // Initialize Bluetooth manager and start scanning when authenticated and MACs are loaded
   useEffect(() => {
     console.log('🔧 Initializing Bluetooth manager');
-    
-    // Start scanning automatically when user is authenticated
-    if (user && !isScanning) {
-      console.log('🔧 User authenticated, starting automatic scanning');
+    // Start scanning automatically when user is authenticated and MACs are loaded
+    if (user && !isScanning && registeredBeaconMacs.size > 0) {
+      console.log('🔧 User authenticated and MACs loaded, starting automatic scanning');
       // Delay the start to avoid dependency issues
       setTimeout(() => {
-        if (user && !isScanning) {
+        if (user && !isScanning && registeredBeaconMacs.size > 0) {
           startContinuousScanning();
         }
       }, 1000);
     }
-    
     return () => {
       console.log('🔧 Cleaning up Bluetooth manager');
       if (continuousScanRef.current) {
@@ -146,7 +212,7 @@ export const useBeacon = () => {
         clearInterval(sessionCheckIntervalRef.current);
       }
     };
-  }, [user, isScanning]);
+  }, [user, isScanning, registeredBeaconMacs]);
 
   // Start continuous scanning for beacons
   const startContinuousScanning = useCallback(async () => {
@@ -159,6 +225,35 @@ export const useBeacon = () => {
     if (!user) {
       console.log('❌ User not authenticated, skipping beacon scan');
       return;
+    }
+
+    // Fetch enrolled courses for the user
+    const { data: enrollments, error: enrollmentsError } = await supabase
+      .from('student_course_enrollments')
+      .select('course_id')
+      .eq('student_id', user.id)
+      .eq('status', 'active');
+    if (enrollmentsError || !enrollments || enrollments.length === 0) {
+      setError('Please enroll in a course first.');
+      setBeacons([]);
+      return;
+    }
+
+    // Check if location services are enabled (required for BLE scan on Android)
+    if (Platform.OS === 'android') {
+      const locationEnabled = await Location.hasServicesEnabledAsync();
+      if (!locationEnabled) {
+        Alert.alert(
+          'Enable Location Services',
+          'Location services (GPS) must be enabled to scan for Bluetooth beacons. Please enable location services in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+          ]
+        );
+        setError('Location services (GPS) must be enabled for BLE scanning.');
+        return;
+      }
     }
 
     if (!manager) {
@@ -228,20 +323,35 @@ export const useBeacon = () => {
           allowDuplicates: false,
           scanMode: 2, // SCAN_MODE_LOW_LATENCY
         },
-        (scanError, device) => {
+        (scanError: any, device: any) => {
           console.log('📱 Device scan callback triggered');
-          console.log('📱 Scan error:', scanError);
+          if (scanError) {
+            // Improved error logging: include error.reason if available
+            console.log('📱 Scan error:', scanError, scanError?.reason);
+            console.error('❌ Beacon scan error:', scanError, scanError?.reason);
+            let userMessage = '';
+            if (scanError.reason) {
+              userMessage = `BLE scan failed: ${scanError.reason}`;
+            } else if (scanError.message && scanError.message.includes('Unknown error occurred')) {
+              userMessage = 'Bluetooth scan failed due to an unknown error. Please ensure all permissions are granted, location services are enabled, and try restarting the app.';
+            } else {
+              userMessage = scanError.message || scanError.toString() || 'Beacon scan failed';
+            }
+            setError(userMessage);
+            return;
+          }
           console.log('📱 Device found:', device?.name, device?.id);
           console.log('📱 Device RSSI:', device?.rssi);
           console.log('📱 Device isConnectable:', device?.isConnectable);
           
-          if (scanError) {
-            console.error('❌ Beacon scan error:', scanError);
-            setError(scanError.message || scanError.toString() || 'Beacon scan failed');
-            return;
-          }
-
           if (device) {
+            const mac = (device.id || '').toUpperCase();
+            // Debug: print scanned and registered MACs
+            console.log('DEBUG: Scanned device.id:', mac, 'Registered MACs:', Array.from(registeredBeaconMacs));
+            if (!registeredBeaconMacs.has(mac)) {
+              console.log('⛔ Device not a registered beacon:', mac);
+              return;
+            }
             console.log('✅ Found device:', device.name || 'Unknown', device.id);
             const beaconData: BeaconData = {
               id: device.id,
@@ -276,7 +386,7 @@ export const useBeacon = () => {
           console.log('✅ Attendance marked, stopping continuous scan');
           stopContinuousScanning();
         }
-      }, 5000); // Check every 5 seconds
+      }, 30000); // Check every 30 seconds
 
       console.log('✅ Continuous scanning setup complete');
 
@@ -285,7 +395,7 @@ export const useBeacon = () => {
       setError('Failed to start beacon scanning');
       setIsScanning(false);
     }
-  }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked]);
+  }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked, registeredBeaconMacs]);
 
   // Stop continuous scanning
   const stopContinuousScanning = useCallback(() => {
@@ -319,83 +429,72 @@ export const useBeacon = () => {
     }
   }, [isScanning, attendanceMarked, manager]);
 
-  // Connect to a specific device by ID
-  const connectToDevice = useCallback(async (deviceId: string) => {
-    if (!manager) {
-      console.log('❌ BleManager not initialized for connectToDevice');
-      setError('Bluetooth manager not available');
-      return;
-    }
-    try {
-      console.log('🔗 Attempting to connect to device:', deviceId);
-      const device = await manager.devices([deviceId]).then(devices => devices[0]);
-      if (!device) {
-        setError('Device not found');
-        return;
-      }
-      if (device.isConnectable) {
-        await device.connect();
-        setIsConnected(true);
-        console.log('✅ Connected to device:', deviceId);
-        // Only after successful connection, check session and mark attendance
-        checkBeaconSessionAndMarkAttendance(deviceId);
-      } else {
-        setError('Device is not connectable');
-        console.log('⚠️ Device is not connectable:', deviceId);
-      }
-    } catch (connectError: any) {
-      setError(connectError?.message || connectError?.toString() || 'Failed to connect');
-      console.error('❌ Failed to connect to device:', connectError);
-    }
-  }, [manager]);
+  // Connect to a specific device by ID (deprecated, now handled directly)
+  // const connectToDevice = useCallback(async (deviceId: string) => {
+  //   ... (remove BLE connection logic)
+  // });
 
   // Check if beacon has an active session and mark attendance
   const checkBeaconSessionAndMarkAttendance = async (macAddress: string) => {
     console.log('🔍 checkBeaconSessionAndMarkAttendance called for:', macAddress);
-    
     try {
       console.log('📊 Querying database for beacon session...');
-      
-      const { data: sessions, error } = await supabase
+      // Get current date and time
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const currentTime = now.toTimeString().split(' ')[0];
+      const { data: session, error } = await supabase
         .from('class_sessions')
-        .select(`
-          id,
-          beacon_id,
-          course_id,
-          start_time,
-          end_time,
-          is_active
-        `)
+        .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
         .eq('beacon_id', macAddress)
-        .eq('is_active', true)
+        .eq('session_date', today)
+        .lte('start_time', currentTime)
+        .gte('end_time', currentTime)
         .single();
-
-      console.log('📊 Database query result:', { sessions, error });
-
+      console.log('📊 Database query result:', { session, error });
       if (error) {
         console.error('❌ Error fetching beacon session:', error);
         setError(error.message || error.toString() || 'Failed to fetch beacon session');
         return;
       }
-
-      if (sessions) {
-        console.log('✅ Active session found for beacon:', sessions);
-        setCurrentSession(sessions);
-        
-        console.log('📝 Marking attendance for session:', sessions.id);
+      if (session) {
+        console.log('✅ Active session found for beacon:', session);
+        setCurrentSession(session);
+        console.log('📝 Marking attendance for session:', session.id, 'session object:', session);
         // Mark attendance for this session
-        const success = await markAttendance(sessions.id, 'beacon');
+        const success = await markAttendance(session.id, 'beacon');
         console.log('📝 Attendance marking result:', success);
-        
         if (success) {
           console.log('✅ Attendance marked successfully for beacon session');
           setAttendanceMarked(true);
           setIsConnected(true);
+          // Insert attendance record into DB
+          try {
+            const { data: attendanceInsert, error: attendanceInsertError } = await supabase
+              .from('attendance_records')
+              .insert([
+                {
+                  session_id: session.id,
+                  student_id: user?.id,
+                  method: 'beacon',
+                  status: 'present',
+                  check_in_time: new Date().toISOString(),
+                },
+              ]);
+            if (attendanceInsertError) {
+              console.error('❌ Error inserting attendance record:', attendanceInsertError);
+            } else {
+              console.log('✅ Attendance record inserted:', attendanceInsert);
+            }
+          } catch (insertErr) {
+            console.error('❌ Exception inserting attendance record:', insertErr);
+          }
         } else {
           console.log('❌ Failed to mark attendance');
         }
       } else {
         console.log('⚠️ No active session found for beacon:', macAddress);
+        setError('No active session found for this beacon.');
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);
@@ -464,6 +563,10 @@ export const useBeacon = () => {
     startContinuousScanning,
     stopContinuousScanning,
     requestBluetoothPermissions,
-    connectToDevice, // <-- expose this
+    // connectToDevice, // Remove this
+    isConnecting,
+    setIsConnecting, // Expose this for external use
+    connectedBeaconId, // <-- expose this
+    checkBeaconSessionAndMarkAttendance, // Expose this for direct use
   };
 };
