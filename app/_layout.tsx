@@ -197,8 +197,9 @@ function RootLayoutNav() {
                       currentPath === '/history' || 
                       currentPath === '/settings';
       const isOnChangePassword = currentPath === '/change-password';
+      const isOnQRScanner = currentPath === '/qr-scanner';
 
-      console.log('Navigation paths - isOnAuth:', isOnAuth, 'isOnLogin:', isOnLogin, 'isOnSelectUniversity:', isOnSelectUniversity, 'isOnTabs:', isOnTabs);
+      console.log('Navigation paths - isOnAuth:', isOnAuth, 'isOnLogin:', isOnLogin, 'isOnSelectUniversity:', isOnSelectUniversity, 'isOnTabs:', isOnTabs, 'isOnQRScanner:', isOnQRScanner);
       console.log('Current path details:', { currentPath, pathname, isOnTabs });
 
       if (!university) {
@@ -212,12 +213,12 @@ function RootLayoutNav() {
           router.replace('/(auth)/login');
         }
       } else {
-        // Only navigate to tabs if not already on tabs, auth, or change-password page
-        if (!isOnTabs && !isOnAuth && !isOnChangePassword) {
+        // Only navigate to tabs if not already on tabs, auth, change-password, or qr-scanner page
+        if (!isOnTabs && !isOnAuth && !isOnChangePassword && !isOnQRScanner) {
           console.log('Authenticated, navigating to tabs index');
           router.replace('/(tabs)');
         } else {
-          console.log('Already on tabs, auth, or change-password, no navigation needed');
+          console.log('Already on tabs, auth, change-password, or qr-scanner, no navigation needed');
         }
       }
     }
