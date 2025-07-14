@@ -470,6 +470,24 @@ export const useBeacon = () => {
           setIsConnected(true);
           // Insert attendance record into DB
           try {
+            // Fetch course_code and course_name from courses table
+            let courseCode = null;
+            let courseName = null;
+            try {
+              const { data: course, error: courseError } = await supabase
+                .from('courses')
+                .select('code, name')
+                .eq('id', session.course_id)
+                .single();
+              if (courseError) {
+                console.error('❌ Error fetching course info:', courseError);
+              } else if (course) {
+                courseCode = course.code;
+                courseName = course.name;
+              }
+            } catch (courseFetchErr) {
+              console.error('❌ Exception fetching course info:', courseFetchErr);
+            }
             const { data: attendanceInsert, error: attendanceInsertError } = await supabase
               .from('attendance_records')
               .insert([
@@ -479,6 +497,9 @@ export const useBeacon = () => {
                   method: 'beacon',
                   status: 'present',
                   check_in_time: new Date().toISOString(),
+                  course_code: courseCode,
+                  course_name: courseName,
+                  date: today,
                 },
               ]);
             if (attendanceInsertError) {
