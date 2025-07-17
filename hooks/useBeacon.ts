@@ -453,13 +453,19 @@ export const useBeacon = () => {
       // 2. Use beacon.id (UUID) in the class_sessions query
       console.log('📊 Querying database for beacon session with beacon_id:', beacon.id);
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const currentTime = now.toTimeString().split(' ')[0];
+      // Calculate today and tomorrow in ISO format for date range
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const todayStartIso = todayStart.toISOString();
+      const tomorrowStartIso = tomorrowStart.toISOString();
+      // Ensure currentTime is in HH:MM:SS format
+      const currentTime = now.toTimeString().slice(0, 8);
       const { data: session, error } = await supabase
         .from('class_sessions')
         .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
         .eq('beacon_id', beacon.id)
-        .eq('session_date', today)
+        .gte('session_date', todayStartIso)
+        .lt('session_date', tomorrowStartIso)
         .lte('start_time', currentTime)
         .gte('end_time', currentTime)
         .maybeSingle(); // <-- allows 0 or 1 result
@@ -516,7 +522,7 @@ export const useBeacon = () => {
                   check_in_time: new Date().toISOString(),
                   course_code: courseCode,
                   course_name: courseName,
-                  date: today,
+                  date: todayStartIso.split('T')[0],
                 },
               ]);
             if (attendanceInsertError) {
