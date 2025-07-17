@@ -453,21 +453,17 @@ export const useBeacon = () => {
       // 2. Use beacon.id (UUID) in the class_sessions query
       console.log('📊 Querying database for beacon session with beacon_id:', beacon.id);
       const now = new Date();
-      // Calculate today and tomorrow in ISO format for date range
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      const todayStartIso = todayStart.toISOString();
-      const tomorrowStartIso = tomorrowStart.toISOString();
-      // Ensure currentTime is in HH:MM:SS format
-      const currentTime = now.toTimeString().slice(0, 8);
+      // Extract only the date part for session_date (YYYY-MM-DD)
+      const today = now.toISOString().split('T')[0];
+      // Extract only the time part for start_time and end_time (HH:mm:ss)
+      const currentTime = now.toTimeString().split(' ')[0];
       const { data: session, error } = await supabase
         .from('class_sessions')
         .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
         .eq('beacon_id', beacon.id)
-        .gte('session_date', todayStartIso)
-        .lt('session_date', tomorrowStartIso)
-        .lte('start_time', currentTime)
-        .gte('end_time', currentTime)
+        .eq('session_date', today) // Pass only the date part
+        .lte('start_time', currentTime) // Pass only the time part
+        .gte('end_time', currentTime) // Pass only the time part
         .maybeSingle(); // <-- allows 0 or 1 result
       console.log('📊 Database query result:', { session, error });
       if (error) {
@@ -522,7 +518,7 @@ export const useBeacon = () => {
                   check_in_time: new Date().toISOString(),
                   course_code: courseCode,
                   course_name: courseName,
-                  date: todayStartIso.split('T')[0],
+                  date: today,
                 },
               ]);
             if (attendanceInsertError) {
