@@ -102,20 +102,23 @@ export class CourseService {
    */
   static async getAvailableCourses(schoolId: string, studentId: string | null): Promise<Course[]> {
     try {
-      // Get enrolled course IDs
-      const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('student_course_enrollments')
-        .select('course_id')
-        .eq('student_id', studentId)
-        .eq('status', 'active');
+      let enrolledIds: string[] = [];
+      if (studentId && studentId.trim() !== '') {
+        // Get enrolled course IDs only if studentId is valid
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id')
+          .eq('student_id', studentId)
+          .eq('status', 'active');
 
-      if (enrollmentsError) {
-        console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
-        throw enrollmentsError;
+        if (enrollmentsError) {
+          console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
+          throw enrollmentsError;
+        }
+
+        enrolledIds = enrollments?.map(e => e.course_id) || [];
+        console.log('getAvailableCourses: enrolledIds', enrolledIds);
       }
-
-      const enrolledIds = enrollments?.map(e => e.course_id) || [];
-      console.log('getAvailableCourses: enrolledIds', enrolledIds);
 
       // Get all courses NOT in enrolledIds
       let query = supabase
@@ -146,9 +149,28 @@ export class CourseService {
         id: course.id,
         code: course.code,
         name: course.name,
+        description: course.description,
         instructorId: course.instructor_id,
         instructor: course.instructor,
         instructorName: course.instructor?.full_name || 'Unknown Instructor',
+        location: course.location,
+        schedule: course.schedule,
+        schoolId: course.school_id || schoolId || 'daystar-university',
+        school: course.school,
+        department: course.department,
+        semester: course.semester,
+        academicYear: course.academic_year,
+        maxStudents: course.max_students || 50,
+        beaconId: course.beacon_id,
+        beacon: course.beacon,
+        approvalRequired: course.approval_required ?? false,
+        room: course.room,
+        beaconMacAddress: course.beacon_mac_address,
+        startTime: course.start_time,
+        endTime: course.end_time,
+        days: course.days,
+        attendanceRate: course.attendance_rate,
+        coordinates: course.coordinates,
         createdAt: course.created_at,
         updatedAt: course.updated_at,
       })) || [];

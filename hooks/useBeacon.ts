@@ -438,23 +438,40 @@ export const useBeacon = () => {
   const checkBeaconSessionAndMarkAttendance = async (macAddress: string) => {
     console.log('🔍 checkBeaconSessionAndMarkAttendance called for:', macAddress);
     try {
-      console.log('📊 Querying database for beacon session...');
-      // Get current date and time
+      console.log('📊 Looking up beacon UUID for MAC address...');
+      // 1. Find the beacon by MAC address
+      const { data: beacon, error: beaconError } = await supabase
+        .from('ble_beacons')
+        .select('id')
+        .eq('mac_address', macAddress)
+        .single();
+      if (beaconError || !beacon) {
+        console.error('❌ Error fetching beacon by MAC address:', beaconError);
+        setError('Beacon not found for this MAC address.');
+        return;
+      }
+      // 2. Use beacon.id (UUID) in the class_sessions query
+      console.log('📊 Querying database for beacon session with beacon_id:', beacon.id);
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       const currentTime = now.toTimeString().split(' ')[0];
       const { data: session, error } = await supabase
         .from('class_sessions')
         .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
-        .eq('beacon_id', macAddress)
+        .eq('beacon_id', beacon.id)
         .eq('session_date', today)
         .lte('start_time', currentTime)
         .gte('end_time', currentTime)
-        .single();
+        .maybeSingle(); // <-- allows 0 or 1 result
       console.log('📊 Database query result:', { session, error });
       if (error) {
         console.error('❌ Error fetching beacon session:', error);
         setError(error.message || error.toString() || 'Failed to fetch beacon session');
+        return;
+      }
+      if (!session) {
+        console.log('⚠️ No active session found for beacon:', macAddress);
+        setError('No active session found for this beacon.');
         return;
       }
       if (session) {
@@ -513,9 +530,6 @@ export const useBeacon = () => {
         } else {
           console.log('❌ Failed to mark attendance');
         }
-      } else {
-        console.log('⚠️ No active session found for beacon:', macAddress);
-        setError('No active session found for this beacon.');
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);

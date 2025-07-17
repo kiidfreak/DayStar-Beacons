@@ -189,7 +189,8 @@ function RootLayoutNav() {
       console.log('Navigation check - isAuthenticated:', isAuthenticated, 'user:', user?.id, 'university:', university, 'pathname:', pathname);
       const currentPath = pathname || '';
       const isOnAuth = currentPath.startsWith('/(auth)');
-      const isOnLogin = currentPath === '/(auth)/login';
+      const isOnLogin = currentPath === '/(auth)/login' || currentPath === '/login';
+      const isOnRegister = currentPath === '/(auth)/register' || currentPath === '/register';
       const isOnSelectUniversity = currentPath === '/(auth)/select-university';
       const isOnTabs = currentPath.startsWith('/(tabs)') || 
                       currentPath === '/' || 
@@ -208,7 +209,7 @@ function RootLayoutNav() {
           router.replace('/(auth)/select-university');
         }
       } else if (!isAuthenticated || !user) {
-        if (!isOnLogin) {
+        if (!isOnLogin && !isOnRegister) {
           console.log('University selected, not authenticated, navigating to login');
           router.replace('/(auth)/login');
         }
