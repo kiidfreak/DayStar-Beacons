@@ -88,6 +88,12 @@ export const BeaconStatus = () => {
 
   console.log('📊 BeaconStatus render - isScanning:', isScanning, 'error:', error, 'beacons:', beacons.length, 'attendanceMarked:', attendanceMarked);
 
+  // Get device time for display
+  const now = new Date();
+  const deviceTimeISO = now.toISOString();
+  const deviceTimeLocal = now.toLocaleString();
+  const deviceTimeHHMMSS = now.toTimeString().split(' ')[0];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.card }]}>
       <View style={styles.header}>
@@ -171,13 +177,22 @@ export const BeaconStatus = () => {
         </View>
       )}
 
-      {currentSession && (
-        <View style={styles.sessionInfo}>
-          <Text style={[styles.sessionText, { color: colors.textSecondary }]}>
-            Active Session: {currentSession.course_id}
-          </Text>
-        </View>
-      )}
+      {/* Show session info and device/session times for debugging */}
+      <View style={styles.sessionInfo}>
+        <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Device Time (ISO): {deviceTimeISO}</Text>
+        <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Device Time (Local): {deviceTimeLocal}</Text>
+        <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Device Time (HH:mm:ss): {deviceTimeHHMMSS}</Text>
+        {currentSession ? (
+          <>
+            <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Session Date: {currentSession.session_date}</Text>
+            <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Session Start: {currentSession.start_time}</Text>
+            <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Session End: {currentSession.end_time}</Text>
+            <Text style={[styles.sessionText, { color: colors.textSecondary }]}>Session Course: {currentSession.course_id}</Text>
+          </>
+        ) : (
+          <Text style={[styles.sessionText, { color: colors.textSecondary }]}>No active session</Text>
+        )}
+      </View>
 
       {/* Manual scan button */}
       {!isScanning && !attendanceMarked && !error && (

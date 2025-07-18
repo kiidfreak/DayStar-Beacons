@@ -457,6 +457,9 @@ export const useBeacon = () => {
       const today = now.toISOString().split('T')[0];
       // Extract only the time part for start_time and end_time (HH:mm:ss)
       const currentTime = now.toTimeString().split(' ')[0];
+      console.log('🕒 Device current time (ISO):', now.toISOString());
+      console.log('🕒 Device current time (local):', now.toLocaleString());
+      console.log('🕒 Device current time (HH:mm:ss):', currentTime);
       const { data: session, error } = await supabase
         .from('class_sessions')
         .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
@@ -466,6 +469,15 @@ export const useBeacon = () => {
         .gte('end_time', currentTime) // Pass only the time part
         .maybeSingle(); // <-- allows 0 or 1 result
       console.log('📊 Database query result:', { session, error });
+      if (session) {
+        console.log('🕒 Session start_time:', session.start_time);
+        console.log('🕒 Session end_time:', session.end_time);
+        console.log('🕒 Session session_date:', session.session_date);
+        // Compare device time to session times
+        const sessionStart = session.start_time;
+        const sessionEnd = session.end_time;
+        console.log('🕒 Comparing device time (', currentTime, ') to session window:', sessionStart, '-', sessionEnd);
+      }
       if (error) {
         console.error('❌ Error fetching beacon session:', error);
         setError(error.message || error.toString() || 'Failed to fetch beacon session');

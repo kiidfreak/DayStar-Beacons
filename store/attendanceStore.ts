@@ -1,33 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AttendanceRecord, Course, BeaconStatus, CheckInPrompt, DayOfWeek } from '@/types';
+import { AttendanceRecord, Course, BeaconStatus, CheckInPrompt, DayOfWeek, CourseSession } from '@/types';
 import { CourseService } from '@/services/courseService';
 import { AttendanceService } from '@/services/attendanceService';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
-
-interface AttendanceRecord {
-  id: string;
-  student_id: string;
-  session_id: string;
-  course_id: string;
-  check_in_time: string;
-  check_out_time?: string;
-  attendance_method: 'qr' | 'beacon' | 'manual';
-  status: 'present' | 'absent' | 'late';
-  created_at: string;
-}
-
-interface CourseSession {
-  id: string;
-  course_id: string;
-  course_name: string;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-  beacon_id?: string;
-}
 
 interface AttendanceState {
   // State
@@ -142,15 +120,29 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       }
 
       console.log('📝 Creating attendance record...');
+      // Fix property access for sessionData.courses with fallback and type guard
+      let courseCode = 'UNKNOWN';
+      let courseName = 'Unknown Course';
+      if (sessionData.courses) {
+        if (Array.isArray(sessionData.courses) && sessionData.courses.length > 0 && sessionData.courses[0]) {
+          courseCode = (sessionData.courses[0] as { code?: string }).code || 'UNKNOWN';
+          courseName = (sessionData.courses[0] as { name?: string }).name || 'Unknown Course';
+        } else if (!Array.isArray(sessionData.courses)) {
+          courseCode = (sessionData.courses as { code?: string }).code || 'UNKNOWN';
+          courseName = (sessionData.courses as { name?: string }).name || 'Unknown Course';
+        }
+      }
+
       // Create attendance record
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance_records')
         .insert({
           student_id: user.id,
           session_id: sessionId,
-          course_code: sessionData.courses.code,
+          course_code: courseCode,
           check_in_time: new Date().toISOString(),
           status: 'present',
+          method: method, // <-- ensure method is always set
         })
         .select()
         .single();
@@ -170,8 +162,9 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         bannerMessage: 'Attendance marked successfully!',
         currentSession: {
           id: sessionId,
-          course_code: sessionData.courses.code,
-          course_name: sessionData.courses.name,
+          course_id: sessionData.course_id,
+          course_code: courseCode,
+          course_name: courseName,
           start_time: new Date().toISOString(),
           end_time: new Date().toISOString(),
           is_active: true,
