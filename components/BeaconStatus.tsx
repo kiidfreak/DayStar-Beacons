@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'rea
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBeacon } from '@/hooks/useBeacon';
 import { useThemeStore } from '@/store/themeStore';
+import { supabase } from '@/lib/supabaseClient';
 
 export const BeaconStatus = () => {
   const { 
@@ -21,6 +22,36 @@ export const BeaconStatus = () => {
     checkBeaconSessionAndMarkAttendance, // <-- add this
   } = useBeacon();
   const { themeColors } = useThemeStore();
+
+  // Add state for debug sessions
+  const [debugSessions, setDebugSessions] = React.useState([]);
+  const [debugActiveSessions, setDebugActiveSessions] = React.useState([]);
+
+  // Fetch and display all sessions for today for the detected beacon (debug)
+  React.useEffect(() => {
+    async function fetchDebugSessions() {
+      if (!beacons || beacons.length === 0) return;
+      const beacon = beacons[0]; // Just use the first beacon for debug
+      const today = new Date().toISOString().split('T')[0];
+      const currentTimeUTC = new Date().toISOString().split('T')[1].split('.')[0];
+      try {
+        const { data: allSessions } = await supabase
+          .from('class_sessions')
+          .select('id, beacon_id, course_id, start_time, end_time, session_date')
+          .eq('beacon_id', beacon.macAddress)
+          .eq('session_date', today);
+        setDebugSessions(allSessions || []);
+        const active = (allSessions || []).filter(session =>
+          session.start_time <= currentTimeUTC && session.end_time >= currentTimeUTC
+        );
+        setDebugActiveSessions(active);
+      } catch (e) {
+        setDebugSessions([]);
+        setDebugActiveSessions([]);
+      }
+    }
+    fetchDebugSessions();
+  }, [beacons]);
 
   // Fallback colors
   const colors = themeColors || {
@@ -153,8 +184,11 @@ export const BeaconStatus = () => {
               <Text style={[styles.beaconId, { color: colors.textSecondary }]}>
                 {beacon.macAddress}
               </Text>
-              {attendanceMarked ? (
-                <Text style={{ color: colors.success, marginLeft: 8 }}>Attendance already recorded for this session</Text>
+              {attendanceMarked && connectedBeaconId === beacon.id ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
+                  <MaterialCommunityIcons name="check-circle" size={16} color={colors.success} />
+                  <Text style={{ color: colors.success, marginLeft: 4 }}>Present</Text>
+                </View>
               ) : (
                 <TouchableOpacity
                   style={[styles.connectButton, { backgroundColor: colors.primary, marginLeft: 8, opacity: isConnecting ? 0.6 : 1 }]}
@@ -169,10 +203,19 @@ export const BeaconStatus = () => {
                   <Text style={{ color: '#FFF', marginLeft: 4 }}>{isConnecting ? 'Marking...' : 'Mark Attendance'}</Text>
                 </TouchableOpacity>
               )}
-              {connectedBeaconId === beacon.id && (
-                <Text style={{ color: colors.success, marginLeft: 8 }}>Connected</Text>
-              )}
             </View>
+          ))}
+        </View>
+      )}
+
+      {/* Debug: Show all sessions for today for the detected beacon */}
+      {debugSessions.length > 0 && (
+        <View style={{ marginTop: 12, padding: 8, backgroundColor: colors.highlight, borderRadius: 8 }}>
+          <Text style={{ color: colors.text, fontWeight: 'bold', marginBottom: 4 }}>Sessions for this beacon today:</Text>
+          {debugSessions.map(session => (
+            <Text key={session.id} style={{ color: debugActiveSessions.some(s => s.id === session.id) ? colors.success : colors.textSecondary }}>
+              {session.session_date} | {session.start_time} - {session.end_time} {debugActiveSessions.some(s => s.id === session.id) ? ' (ACTIVE)' : ''}
+            </Text>
           ))}
         </View>
       )}

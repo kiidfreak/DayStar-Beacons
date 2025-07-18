@@ -438,6 +438,9 @@ export const useBeacon = () => {
   const checkBeaconSessionAndMarkAttendance = async (macAddress: string) => {
     console.log('🔍 checkBeaconSessionAndMarkAttendance called for:', macAddress);
     try {
+      // Define today as YYYY-MM-DD in UTC
+      const today = new Date().toISOString().split('T')[0];
+      console.log('📅 Today (UTC):', today);
       console.log('📊 Looking up beacon UUID for MAC address...');
       // 1. Find the beacon by MAC address
       const { data: beacon, error: beaconError } = await supabase
@@ -450,100 +453,82 @@ export const useBeacon = () => {
         setError('Beacon not found for this MAC address.');
         return;
       }
-      // 2. Use beacon.id (UUID) in the class_sessions query
-      console.log('📊 Querying database for beacon session with beacon_id:', beacon.id);
-      const now = new Date();
-      // Extract only the date part for session_date (YYYY-MM-DD)
-      const today = now.toISOString().split('T')[0];
-      // Extract only the time part for start_time and end_time (HH:mm:ss)
-      const currentTime = now.toTimeString().split(' ')[0];
-      console.log('🕒 Device current time (ISO):', now.toISOString());
-      console.log('🕒 Device current time (local):', now.toLocaleString());
-      console.log('🕒 Device current time (HH:mm:ss):', currentTime);
-      const { data: session, error } = await supabase
+      // 1. Fetch all sessions for this beacon and today
+      const { data: allSessions, error: allSessionsError } = await supabase
         .from('class_sessions')
-        .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
+        .select('id, beacon_id, course_id, start_time, end_time, session_date')
         .eq('beacon_id', beacon.id)
-        .eq('session_date', today) // Pass only the date part
-        .lte('start_time', currentTime) // Pass only the time part
-        .gte('end_time', currentTime) // Pass only the time part
-        .maybeSingle(); // <-- allows 0 or 1 result
-      console.log('📊 Database query result:', { session, error });
-      if (session) {
-        console.log('🕒 Session start_time:', session.start_time);
-        console.log('🕒 Session end_time:', session.end_time);
-        console.log('🕒 Session session_date:', session.session_date);
-        // Compare device time to session times
-        const sessionStart = session.start_time;
-        const sessionEnd = session.end_time;
-        console.log('🕒 Comparing device time (', currentTime, ') to session window:', sessionStart, '-', sessionEnd);
-      }
-      if (error) {
-        console.error('❌ Error fetching beacon session:', error);
-        setError(error.message || error.toString() || 'Failed to fetch beacon session');
-        return;
-      }
+        .eq('session_date', today);
+      console.log('🔎 All sessions for beacon today:', allSessions, 'Error:', allSessionsError);
+
+      // 2. Filter for active session by time
+      const currentTimeUTC = new Date().toISOString().split('T')[1].split('.')[0];
+      const activeSessions = (allSessions || []).filter(session =>
+        session.start_time <= currentTimeUTC && session.end_time >= currentTimeUTC
+      );
+      console.log('🟢 Active sessions for beacon at', currentTimeUTC, ':', activeSessions);
+
+      // 3. Use the first active session for attendance
+      const session = activeSessions[0];
       if (!session) {
-        console.log('⚠️ No active session found for beacon:', macAddress);
+        console.log('⚠️ No active session found for beacon:', macAddress, 'at', currentTimeUTC);
         setError('No active session found for this beacon.');
         return;
       }
-      if (session) {
-        console.log('✅ Active session found for beacon:', session);
-        setCurrentSession(session);
-        console.log('📝 Marking attendance for session:', session.id, 'session object:', session);
-        // Mark attendance for this session
-        const success = await markAttendance(session.id, 'beacon');
-        console.log('📝 Attendance marking result:', success);
-        if (success) {
-          console.log('✅ Attendance marked successfully for beacon session');
-          setAttendanceMarked(true);
-          setIsConnected(true);
-          // Insert attendance record into DB
+      console.log('✅ Active session found for beacon:', session);
+      setCurrentSession(session);
+      console.log('📝 Marking attendance for session:', session.id, 'session object:', session);
+      // Mark attendance for this session
+      const success = await markAttendance(session.id, 'beacon');
+      console.log('📝 Attendance marking result:', success);
+      if (success) {
+        console.log('✅ Attendance marked successfully for beacon session');
+        setAttendanceMarked(true);
+        setIsConnected(true);
+        // Insert attendance record into DB
+        try {
+          // Fetch course_code and course_name from courses table
+          let courseCode = null;
+          let courseName = null;
           try {
-            // Fetch course_code and course_name from courses table
-            let courseCode = null;
-            let courseName = null;
-            try {
-              const { data: course, error: courseError } = await supabase
-                .from('courses')
-                .select('code, name')
-                .eq('id', session.course_id)
-                .single();
-              if (courseError) {
-                console.error('❌ Error fetching course info:', courseError);
-              } else if (course) {
-                courseCode = course.code;
-                courseName = course.name;
-              }
-            } catch (courseFetchErr) {
-              console.error('❌ Exception fetching course info:', courseFetchErr);
+            const { data: course, error: courseError } = await supabase
+              .from('courses')
+              .select('code, name')
+              .eq('id', session.course_id)
+              .single();
+            if (courseError) {
+              console.error('❌ Error fetching course info:', courseError);
+            } else if (course) {
+              courseCode = course.code;
+              courseName = course.name;
             }
-            const { data: attendanceInsert, error: attendanceInsertError } = await supabase
-              .from('attendance_records')
-              .insert([
-                {
-                  session_id: session.id,
-                  student_id: user?.id,
-                  method: 'beacon',
-                  status: 'present',
-                  check_in_time: new Date().toISOString(),
-                  course_code: courseCode,
-                  course_name: courseName,
-                  date: today,
-                },
-              ]);
-            if (attendanceInsertError) {
-              console.error('❌ Error inserting attendance record:', attendanceInsertError);
-            } else {
-              console.log('✅ Attendance record inserted:', attendanceInsert);
-            }
-          } catch (insertErr) {
-            console.error('❌ Exception inserting attendance record:', insertErr);
+          } catch (courseFetchErr) {
+            console.error('❌ Exception fetching course info:', courseFetchErr);
           }
-        } else {
-          console.log('❌ Failed to mark attendance');
+          const { data: attendanceInsert, error: attendanceInsertError } = await supabase
+            .from('attendance_records')
+            .insert([
+              {
+                session_id: session.id,
+                student_id: user?.id,
+                method: 'BLE', // Use correct enum value
+                status: 'present',
+                check_in_time: new Date().toISOString(),
+                course_code: courseCode,
+                course_name: courseName,
+                date: today,
+              },
+            ]);
+          if (attendanceInsertError) {
+            console.error('❌ Error inserting attendance record:', attendanceInsertError);
+          } else {
+            console.log('✅ Attendance record inserted:', attendanceInsert);
+          }
+        } catch (insertErr) {
+          console.error('❌ Exception inserting attendance record:', insertErr);
         }
+      } else {
+        console.log('❌ Failed to mark attendance');
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);

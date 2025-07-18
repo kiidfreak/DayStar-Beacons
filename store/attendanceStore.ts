@@ -133,6 +133,14 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         }
       }
 
+      // Map method to DB enum value
+      const methodMap: Record<string, string> = {
+        beacon: 'BLE',
+        qr: 'QR',
+        manual: 'MANUAL',
+      };
+      const dbMethod = methodMap[method] || method;
+
       // Create attendance record
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance_records')
@@ -140,9 +148,10 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
           student_id: user.id,
           session_id: sessionId,
           course_code: courseCode,
+          course_name: courseName, // <-- add this line
           check_in_time: new Date().toISOString(),
           status: 'present',
-          method: method, // <-- ensure method is always set
+          method: dbMethod, // use mapped value
         })
         .select()
         .single();
