@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import { Platform, PermissionsAndroid, Alert, ToastAndroid } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { supabase } from '@/lib/supabase';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
+import Toast from 'react-native-toast-message';
 
 interface BeaconData {
   id: string;
@@ -216,11 +217,12 @@ export const useBeacon = () => {
 
   // Start continuous scanning for beacons
   const startContinuousScanning = useCallback(async () => {
-    console.log('🔍 startContinuousScanning called');
-    console.log('🔍 User state:', !!user, 'User ID:', user?.id);
-    console.log('🔍 Permission granted:', permissionGranted);
-    console.log('🔍 Current scanning state:', isScanning);
-    console.log('🔍 Current attendance marked:', attendanceMarked);
+    // Commented out most debug logs for cleaner production
+    // console.log('🔍 startContinuousScanning called');
+    // console.log('🔍 User state:', !!user, 'User ID:', user?.id);
+    // console.log('🔍 Permission granted:', permissionGranted);
+    // console.log('🔍 Current scanning state:', isScanning);
+    // console.log('🔍 Current attendance marked:', attendanceMarked);
 
     if (!user) {
       console.log('❌ User not authenticated, skipping beacon scan');
@@ -308,7 +310,8 @@ export const useBeacon = () => {
     console.log('🚀 Starting continuous beacon scanning...');
 
     try {
-      console.log('📡 Starting device scan with manager...');
+      // Commented out most scan debug logs
+      // console.log('📡 Starting device scan with manager...');
       // Start scanning
       if (!manager) {
         console.log('❌ BleManager not available for scanning');
@@ -324,32 +327,53 @@ export const useBeacon = () => {
           scanMode: 2, // SCAN_MODE_LOW_LATENCY
         },
         (scanError: any, device: any) => {
-          console.log('📱 Device scan callback triggered');
+          // Commented out most scan debug logs
+          // console.log('📱 Device scan callback triggered');
           if (scanError) {
             // Improved error logging: include error.reason if available
             console.log('📱 Scan error:', scanError, scanError?.reason);
             console.error('❌ Beacon scan error:', scanError, scanError?.reason);
-            let userMessage = '';
+            // In BLE scan error handling (startDeviceScan), improve error message for throttling
             if (scanError.reason) {
-              userMessage = `BLE scan failed: ${scanError.reason}`;
+              Toast.show({
+                type: 'error',
+                text1: 'Beacon scan error',
+                text2: `BLE scan failed: ${scanError.reason}`,
+              });
+            } else if (scanError.message && scanError.message.includes('Undocumented scan throttle')) {
+              Toast.show({
+                type: 'info',
+                text1: 'Beacon scan throttled',
+                text2: 'Bluetooth scanning is temporarily throttled by your device. Please wait a few minutes and try again.',
+              });
             } else if (scanError.message && scanError.message.includes('Unknown error occurred')) {
-              userMessage = 'Bluetooth scan failed due to an unknown error. Please ensure all permissions are granted, location services are enabled, and try restarting the app.';
+              Toast.show({
+                type: 'error',
+                text1: 'Beacon scan error',
+                text2: 'Bluetooth scan failed due to an unknown error. Please ensure all permissions are granted, location services are enabled, and try restarting the app.',
+              });
             } else {
-              userMessage = scanError.message || scanError.toString() || 'Beacon scan failed';
+              Toast.show({
+                type: 'error',
+                text1: 'Beacon scan error',
+                text2: scanError.message || scanError.toString() || 'Beacon scan failed',
+              });
             }
-            setError(userMessage);
             return;
           }
-          console.log('📱 Device found:', device?.name, device?.id);
-          console.log('📱 Device RSSI:', device?.rssi);
-          console.log('📱 Device isConnectable:', device?.isConnectable);
+          // Commented out most scan debug logs
+          // console.log('📱 Device found:', device?.name, device?.id);
+          // console.log('📱 Device RSSI:', device?.rssi);
+          // console.log('📱 Device isConnectable:', device?.isConnectable);
           
           if (device) {
             const mac = (device.id || '').toUpperCase();
             // Debug: print scanned and registered MACs
-            console.log('DEBUG: Scanned device.id:', mac, 'Registered MACs:', Array.from(registeredBeaconMacs));
             if (!registeredBeaconMacs.has(mac)) {
-              console.log('⛔ Device not a registered beacon:', mac);
+              // Only log unregistered devices occasionally to reduce spam
+              if (Math.random() < 0.1) { // 10% chance to log
+                console.log('⛔ Device not registered:', mac);
+              }
               return;
             }
             console.log('✅ Found device:', device.name || 'Unknown', device.id);
@@ -381,7 +405,8 @@ export const useBeacon = () => {
       console.log('⏰ Setting up continuous scan interval...');
       // Keep scanning until attendance is marked or manually stopped
       continuousScanRef.current = setInterval(() => {
-        console.log('⏰ Continuous scan interval check - attendance marked:', attendanceMarked);
+        // Commented out most session/attendance debug logs
+        // console.log('⏰ Continuous scan interval check - attendance marked:', attendanceMarked);
         if (attendanceMarked) {
           console.log('✅ Attendance marked, stopping continuous scan');
           stopContinuousScanning();
@@ -436,86 +461,237 @@ export const useBeacon = () => {
 
   // Check if beacon has an active session and mark attendance
   const checkBeaconSessionAndMarkAttendance = async (macAddress: string) => {
-    console.log('🔍 checkBeaconSessionAndMarkAttendance called for:', macAddress);
+    // Add this debug logging to the mobile app's beacon validation function
+    console.log('BLE DEBUG: Validating beacon for user:', { macAddress, userId: user?.id });
     try {
-      console.log('📊 Querying database for beacon session...');
-      // Get current date and time
+      // First, look up the beacon's UUID from the MAC address
+      const { data: beacon, error: beaconError } = await supabase
+        .from('ble_beacons')
+        .select('id')
+        .eq('mac_address', macAddress)
+        .single();
+      if (beaconError || !beacon) {
+        console.error('❌ Error fetching beacon UUID:', beaconError);
+        setError('Beacon not found');
+        return;
+      }
+      const beaconId = beacon.id;
+      // After getting the beacon
+      console.log('BLE DEBUG: Beacon found:', beacon);
+      // DEBUG: Log beaconId and query params
+      console.log('[DEBUG] beaconId:', beaconId, 'macAddress:', macAddress);
+      // Get current date and time in UTC
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      const nowIso = now.toISOString();
+      const today = nowIso.split('T')[0];
+      
+      // Debug: Log the actual current date
+      console.log('📅 DATE DEBUG:');
+      console.log(`  - Current Date object: ${now}`);
+      console.log(`  - UTC ISO string: ${nowIso}`);
+      console.log(`  - Extracted date: ${today}`);
+      console.log(`  - Local date: ${now.toLocaleDateString()}`);
+      console.log(`  - Local time: ${now.toLocaleTimeString()}`);
+      // After getting current time
+      console.log('BLE DEBUG: Current time info:', { today, currentTime: now.toTimeString().split(' ')[0], now: now.toISOString() });
+      // DEBUG: Show current UTC time and query window
+      Toast.show({
+        type: 'info',
+        text1: 'Debug: Attendance Query',
+        text2: `UTC now: ${nowIso.slice(0,19).replace('T',' ')}\nDate: ${today}\nBeacon: ${macAddress}`,
+        autoHide: false, // Stays until dismissed
+      });
+      console.log('[DEBUG] UTC now:', nowIso, 'Date:', today);
+      // Get current date and time
       const currentTime = now.toTimeString().split(' ')[0];
+      // DEBUG: Log query params
+      console.log('[DEBUG] Querying class_sessions with:', {
+        beaconId,
+        today,
+        currentTime
+      });
+      // Before the session query, add this to see ALL sessions for the beacon today
+      const { data: allSessions, error: allSessionsError } = await supabase
+        .from('class_sessions')
+        .select('*')
+        .eq('beacon_id', beaconId)
+        .eq('session_date', today);
+
+      if (allSessionsError) {
+        console.log('BLE DEBUG: Error fetching all sessions:', allSessionsError);
+      } else {
+        console.log('BLE DEBUG: All sessions for beacon today:', allSessions);
+        
+        // Log detailed session status analysis
+        if (allSessions && allSessions.length > 0) {
+          console.log('📊 SESSION STATUS ANALYSIS:');
+          allSessions.forEach((session, index) => {
+            const now = new Date();
+            const windowStart = new Date(session.attendance_window_start);
+            const windowEnd = new Date(session.attendance_window_end);
+            const isActive = now >= windowStart && now <= windowEnd;
+            
+            console.log(`Session ${index + 1}:`);
+            console.log(`  - ID: ${session.id}`);
+            console.log(`  - Location: ${session.location}`);
+            console.log(`  - Window: ${windowStart.toISOString()} to ${windowEnd.toISOString()}`);
+            console.log(`  - Current time: ${now.toISOString()}`);
+            console.log(`  - Status: ${isActive ? '🟢 ACTIVE' : '🔴 INACTIVE'}`);
+            console.log(`  - Time until start: ${Math.round((windowStart.getTime() - now.getTime()) / 1000 / 60)} minutes`);
+            console.log(`  - Time until end: ${Math.round((windowEnd.getTime() - now.getTime()) / 1000 / 60)} minutes`);
+          });
+        } else {
+          console.log('📊 No sessions found for today');
+        }
+      }
+      // Query for active session
+      console.log('[DEBUG] About to query with params:', {
+        beaconId,
+        today,
+        nowIso,
+        query: `beacon_id=${beaconId}, session_date=${today}, attendance_window_start>=${nowIso}, attendance_window_end<=${nowIso}`
+      });
       const { data: session, error } = await supabase
         .from('class_sessions')
-        .select(`id, beacon_id, course_id, start_time, end_time, session_date`)
-        .eq('beacon_id', macAddress)
+        .select(`id, beacon_id, course_id, start_time, end_time, session_date, attendance_window_start, attendance_window_end`)
+        .eq('beacon_id', beaconId)
         .eq('session_date', today)
-        .lte('start_time', currentTime)
-        .gte('end_time', currentTime)
-        .single();
-      console.log('📊 Database query result:', { session, error });
+        .lte('attendance_window_start', nowIso)
+        .gte('attendance_window_end', nowIso)
+        .maybeSingle();
+      // After the main session query
+      console.log('BLE DEBUG: Active sessions found:', session ? 1 : 0, session);
+      console.log('[DEBUG] Raw query response:', { session, error });
+      
+      // Log detailed query analysis
+      console.log('🔍 QUERY ANALYSIS:');
+      console.log(`  - Beacon ID: ${beaconId}`);
+      console.log(`  - Date: ${today}`);
+      console.log(`  - Current time: ${nowIso}`);
+      console.log(`  - Query: attendance_window_start <= ${nowIso} AND attendance_window_end >= ${nowIso}`);
+      console.log(`  - Result: ${session ? '✅ FOUND' : '❌ NOT FOUND'}`);
+      
+      if (session) {
+        console.log(`  - Session ID: ${session.id}`);
+        console.log(`  - Window: ${session.attendance_window_start} to ${session.attendance_window_end}`);
+      }
+      
+      // Show query result on screen
+      Toast.show({
+        type: session ? 'success' : 'error',
+        text1: session ? 'Session Found!' : 'No Session Found',
+        text2: session 
+          ? `Session ID: ${session.id}\nWindow: ${session.attendance_window_start} to ${session.attendance_window_end}`
+          : `Query params:\nBeacon: ${beaconId}\nDate: ${today}\nTime: ${nowIso}`,
+        autoHide: false,
+      });
+      // Log and toast the full query params
+      console.log('[DEBUG] Query params:', {
+        beaconId,
+        today,
+        nowIso,
+      });
+      Toast.show({
+        type: 'info',
+        text1: 'Session Query Params',
+        text2: `beaconId: ${beaconId}\ntoday: ${today}\nnow: ${nowIso.slice(0,19).replace('T',' ')}\nquery: attendance_window_start>=${nowIso.slice(0,19)} AND attendance_window_end<=${nowIso.slice(0,19)}`,
+        autoHide: false,
+      });
+      // DEBUG: Log session query result
+      console.log('[DEBUG] class_sessions query result:', { session, error });
       if (error) {
-        console.error('❌ Error fetching beacon session:', error);
+        // Handle no rows found (PGRST116) with a user notification only
+        if (error.code === 'PGRST116') {
+          Toast.show({
+            type: 'info',
+            text1: 'No active session found for this beacon.',
+            visibilityTime: 2500,
+          });
+          setError(null); // Do not propagate error
+          return;
+        }
+        Toast.show({
+          type: 'error',
+          text1: 'Beacon session error',
+          text2: error.message || error.toString() || 'Failed to fetch beacon session',
+        });
         setError(error.message || error.toString() || 'Failed to fetch beacon session');
         return;
       }
       if (session) {
-        console.log('✅ Active session found for beacon:', session);
+        // Log and toast attendance window check
+        const nowUtc = new Date().toISOString();
+        const inWindow = nowUtc >= session.attendance_window_start && nowUtc <= session.attendance_window_end;
+        console.log('[DEBUG] Attendance window check:', {
+          nowUtc,
+          windowStart: session.attendance_window_start,
+          windowEnd: session.attendance_window_end,
+          inWindow,
+        });
+        Toast.show({
+          type: inWindow ? 'success' : 'error',
+          text1: inWindow ? 'Within Attendance Window' : 'Outside Attendance Window',
+          text2: `Now: ${nowUtc.slice(0,19).replace('T',' ')}\nStart: ${session.attendance_window_start}\nEnd: ${session.attendance_window_end}`,
+          visibilityTime: 4000,
+        });
+        if (!inWindow) {
+          setIsConnected(false);
+          setAttendanceMarked(false);
+          return;
+        }
         setCurrentSession(session);
-        console.log('📝 Marking attendance for session:', session.id, 'session object:', session);
         // Mark attendance for this session
-        const success = await markAttendance(session.id, 'beacon');
-        console.log('📝 Attendance marking result:', success);
+        let success = false;
+        let error: any = null;
+        try {
+          success = await markAttendance(session.id, 'beacon');
+        } catch (e) {
+          error = e;
+        }
         if (success) {
-          console.log('✅ Attendance marked successfully for beacon session');
+          Toast.show({
+            type: 'success',
+            text1: 'Attendance marked successfully!',
+            visibilityTime: 3000,
+          });
           setAttendanceMarked(true);
           setIsConnected(true);
-          // Insert attendance record into DB
-          try {
-            // Fetch course_code and course_name from courses table
-            let courseCode = null;
-            let courseName = null;
-            try {
-              const { data: course, error: courseError } = await supabase
-                .from('courses')
-                .select('code, name')
-                .eq('id', session.course_id)
-                .single();
-              if (courseError) {
-                console.error('❌ Error fetching course info:', courseError);
-              } else if (course) {
-                courseCode = course.code;
-                courseName = course.name;
-              }
-            } catch (courseFetchErr) {
-              console.error('❌ Exception fetching course info:', courseFetchErr);
-            }
-            const { data: attendanceInsert, error: attendanceInsertError } = await supabase
-              .from('attendance_records')
-              .insert([
-                {
-                  session_id: session.id,
-                  student_id: user?.id,
-                  method: 'beacon',
-                  status: 'present',
-                  check_in_time: new Date().toISOString(),
-                  course_code: courseCode,
-                  course_name: courseName,
-                  date: today,
-                },
-              ]);
-            if (attendanceInsertError) {
-              console.error('❌ Error inserting attendance record:', attendanceInsertError);
-            } else {
-              console.log('✅ Attendance record inserted:', attendanceInsert);
-            }
-          } catch (insertErr) {
-            console.error('❌ Exception inserting attendance record:', insertErr);
-          }
-        } else {
-          console.log('❌ Failed to mark attendance');
+        } else if (error && typeof error === 'object' && 'message' in error && error.message.includes('already marked')) {
+          // Only show a single info toast, no red error
+          Toast.show({
+            type: 'info',
+            text1: 'Attendance already marked for this session.',
+            visibilityTime: 3000,
+          });
+          setAttendanceMarked(true);
+          setIsConnected(true);
         }
       } else {
-        console.log('⚠️ No active session found for beacon:', macAddress);
-        setError('No active session found for this beacon.');
+        // If no session found, fetch all sessions for today for this beacon
+        const { data: allSessions, error: allSessionsError } = await supabase
+          .from('class_sessions')
+          .select('id, attendance_window_start, attendance_window_end, start_time, end_time')
+          .eq('beacon_id', beaconId)
+          .eq('session_date', today);
+        console.log('[DEBUG] All sessions for today:', allSessions);
+        Toast.show({
+          type: 'info',
+          text1: 'All Sessions Today',
+          text2: allSessions && allSessions.length > 0
+            ? allSessions.map(s => `ID: ${s.id}\nStart: ${s.attendance_window_start}\nEnd: ${s.attendance_window_end}`).join('\n---\n')
+            : 'None',
+          autoHide: false,
+        });
+        setIsConnected(false);
+        setAttendanceMarked(false);
+        console.log('⏰ SESSION ENDED: No active sessions found for beacon');
+        console.log('🔄 Resetting beacon connection state');
+        Toast.show({
+          type: 'info',
+          text1: 'Session Ended',
+          text2: 'The session has ended. Beacon connection has been reset.',
+          visibilityTime: 3500,
+        });
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);

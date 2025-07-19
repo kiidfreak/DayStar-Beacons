@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -15,45 +15,53 @@ export default function CoursesScreen() {
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   console.log('CoursesScreen user:', user);
 
-  useEffect(() => {
-    async function fetchCoursesAndEnrollments() {
-      setLoading(true);
-      try {
-        // Fetch all courses
-        const { data: courses, error: coursesError } = await supabase
-          .from('courses')
-          .select(`*, instructor:users!courses_instructor_id_fkey(full_name, email)`);
-        if (coursesError) throw coursesError;
+  const fetchCoursesAndEnrollments = async () => {
+    setLoading(true);
+    try {
+      // Fetch all courses
+      const { data: courses, error: coursesError } = await supabase
+        .from('courses')
+        .select(`*, instructor:users!courses_instructor_id_fkey(full_name, email)`);
+      if (coursesError) throw coursesError;
 
-        // Fetch student's enrollments
-        let enrolledIds: Set<string> = new Set();
-        if (user?.id) {
-          const { data: enrollments, error: enrollmentsError } = await supabase
-            .from('student_course_enrollments')
-            .select('course_id, status')
-            .eq('student_id', user.id)
-            .eq('status', 'active');
-          if (enrollmentsError) throw enrollmentsError;
-          enrolledIds = new Set(enrollments.map(e => e.course_id));
-        }
-
-        // Merge: add isEnrolled to each course
-        const merged = courses.map(course => ({
-          ...course,
-          isEnrolled: enrolledIds.has(course.id),
-        }));
-        setAllCourses(merged);
-      } catch (err) {
-        setAllCourses([]);
-      } finally {
-        setLoading(false);
+      // Fetch student's enrollments
+      let enrolledIds: Set<string> = new Set();
+      if (user?.id) {
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id, status')
+          .eq('student_id', user.id)
+          .eq('status', 'active');
+        if (enrollmentsError) throw enrollmentsError;
+        enrolledIds = new Set(enrollments.map(e => e.course_id));
       }
+
+      // Merge: add isEnrolled to each course
+      const merged = courses.map(course => ({
+        ...course,
+        isEnrolled: enrolledIds.has(course.id),
+      }));
+      setAllCourses(merged);
+    } catch (err) {
+      setAllCourses([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
     fetchCoursesAndEnrollments();
   }, [user?.id]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchCoursesAndEnrollments();
+  };
 
   const enrollInCourse = async (courseId: string) => {
     setEnrolling(courseId);
@@ -116,7 +124,13 @@ export default function CoursesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+        }
+      >
         {/* Welcome Header */}
         <View style={styles.welcomeHeader}>
           <View style={styles.welcomeTextContainer}>
@@ -127,7 +141,7 @@ export default function CoursesScreen() {
               {user?.firstName || 'Student'}!
             </Text>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.profileButton, { backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)/settings')}
           >

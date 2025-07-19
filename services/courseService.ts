@@ -7,7 +7,7 @@ export interface Enrollment {
   student_id: string;
   course_id: string;
   status: 'enrolled' | 'pending' | 'dropped';
-  enrolled_at: string;
+  enrollment_date: string;
   course: Course;
 }
 
@@ -102,20 +102,28 @@ export class CourseService {
    */
   static async getAvailableCourses(schoolId: string, studentId: string | null): Promise<Course[]> {
     try {
-      // Get enrolled course IDs
-      const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('student_course_enrollments')
-        .select('course_id')
-        .eq('student_id', studentId)
-        .eq('status', 'active');
+      let enrolledIds: string[] = [];
+      if (
+        studentId &&
+        typeof studentId === 'string' &&
+        studentId.trim() !== '' &&
+        studentId !== 'null' &&
+        studentId !== 'undefined'
+      ) {
+        // Get enrolled course IDs only if studentId is valid
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id')
+          .eq('student_id', studentId)
+          .eq('status', 'active');
 
-      if (enrollmentsError) {
-        console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
-        throw enrollmentsError;
+        if (enrollmentsError) {
+          console.error('getAvailableCourses: enrollmentsError', enrollmentsError);
+          throw enrollmentsError;
+        }
+        enrolledIds = enrollments?.map(e => e.course_id) || [];
+        console.log('getAvailableCourses: enrolledIds', enrolledIds);
       }
-
-      const enrolledIds = enrollments?.map(e => e.course_id) || [];
-      console.log('getAvailableCourses: enrolledIds', enrolledIds);
 
       // Get all courses NOT in enrolledIds
       let query = supabase
@@ -149,8 +157,24 @@ export class CourseService {
         instructorId: course.instructor_id,
         instructor: course.instructor,
         instructorName: course.instructor?.full_name || 'Unknown Instructor',
+        schoolId: course.school_id || schoolId || 'daystar-university',
+        maxStudents: course.max_students || 50,
+        approvalRequired: course.approval_required || false,
         createdAt: course.created_at,
         updatedAt: course.updated_at,
+        location: course.location,
+        schedule: course.schedule,
+        department: course.department,
+        semester: course.semester,
+        academicYear: course.academic_year,
+        beaconId: course.beacon_id,
+        beacon: course.beacon,
+        room: course.room,
+        beaconMacAddress: course.beacon_mac_address,
+        startTime: course.start_time,
+        endTime: course.end_time,
+        days: course.days,
+        description: course.description,
       })) || [];
     } catch (error) {
       console.error('Error fetching available courses:', error);
@@ -332,14 +356,16 @@ export class CourseService {
     courseId: string
   ): Promise<ApiResponse<any>> {
     try {
+      const enrollmentObj = {
+        student_id: studentId,
+        course_id: courseId,
+        status: 'active',
+        enrollment_date: new Date().toISOString(),
+      };
+      console.log('Inserting into student_course_enrollments:', enrollmentObj);
       const { data, error } = await supabase
         .from('student_course_enrollments')
-        .insert({
-          student_id: studentId,
-          course_id: courseId,
-          status: 'active',
-          enrollment_date: new Date().toISOString(),
-        })
+        .insert(enrollmentObj)
         .select()
         .single();
 
@@ -473,7 +499,7 @@ export class CourseService {
           student_id,
           course_id,
           status,
-          enrolled_at,
+          enrollment_date,
           courses!inner(
             id,
             name,
@@ -487,7 +513,7 @@ export class CourseService {
           )
         `)
         .eq('student_id', studentId)
-        .order('enrolled_at', { ascending: false });
+        .order('enrollment_date', { ascending: false });
 
       if (error) {
         console.error('Error fetching enrolled courses:', error);
@@ -529,14 +555,16 @@ export class CourseService {
       }
 
       // Create enrollment
+      const enrollmentObj2 = {
+        student_id: user.id,
+        course_id: courseId,
+        status: 'active',
+        enrollment_date: new Date().toISOString(),
+      };
+      console.log('Inserting into student_course_enrollments:', enrollmentObj2);
       const { error } = await supabase
         .from('student_course_enrollments')
-        .insert({
-          student_id: user.id,
-          course_id: courseId,
-          status: 'enrolled',
-          enrolled_at: new Date().toISOString(),
-        });
+        .insert(enrollmentObj2);
 
       if (error) {
         console.error('Error enrolling in course:', error);

@@ -142,7 +142,7 @@ export const BeaconStatus = () => {
                 color={colors.primary} 
               />
               <Text style={[styles.beaconName, { color: colors.text }]}>
-                {beacon.name || 'Unknown Device'}
+                {beacon.name && beacon.name !== 'Unknown Device' ? beacon.name : 'BLE Beacon'}
               </Text>
               <Text style={[styles.beaconId, { color: colors.textSecondary }]}>
                 {beacon.macAddress}
@@ -285,35 +285,45 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   beaconsList: {
-    marginBottom: 12,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#F8F9FA',
   },
   beaconsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+    color: '#1A1D1F',
   },
   beaconItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 4,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E8ECF4',
   },
   beaconName: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
     flex: 1,
+    color: '#1A1D1F',
   },
   beaconId: {
-    fontSize: 10,
-    marginLeft: 6,
+    fontSize: 11,
+    marginLeft: 8,
+    color: '#6C7072',
+    fontFamily: 'monospace',
   },
   connectButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 6,
+    marginLeft: 8,
   },
 });

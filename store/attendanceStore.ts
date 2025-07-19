@@ -142,7 +142,12 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       }
 
       console.log('📝 Creating attendance record...');
-      // Create attendance record
+      // Map method to correct enum value
+      let dbMethod = method;
+      if (method === 'beacon') dbMethod = 'BLE';
+      else if (method === 'qr') dbMethod = 'QR';
+      else if (method === 'manual') dbMethod = 'MANUAL';
+
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance_records')
         .insert({
@@ -151,6 +156,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
           course_code: sessionData.courses.code,
           check_in_time: new Date().toISOString(),
           status: 'present',
+          method: dbMethod,
         })
         .select()
         .single();
