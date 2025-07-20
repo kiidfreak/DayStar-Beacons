@@ -480,10 +480,25 @@ export const useBeacon = () => {
       console.log('BLE DEBUG: Beacon found:', beacon);
       // DEBUG: Log beaconId and query params
       console.log('[DEBUG] beaconId:', beaconId, 'macAddress:', macAddress);
-      // Get current date and time in UTC
+      // Get current date and time in local timezone (to match database format)
       const now = new Date();
       const nowIso = now.toISOString();
       const today = nowIso.split('T')[0];
+      
+      // Convert to local time for database query (since DB stores local time)
+      const localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+      const localTimeString = localTime.toISOString().slice(0, 19).replace('T', ' ');
+      
+      console.log('🔍 TIME DEBUG:');
+      console.log(`  - UTC time: ${nowIso}`);
+      console.log(`  - Local time: ${localTimeString}`);
+      console.log(`  - Date for query: ${today}`);
+      
+      // Ensure we're using UTC consistently
+      console.log('🔍 TIME DEBUG:');
+      console.log(`  - Local time: ${now.toLocaleString()}`);
+      console.log(`  - UTC time: ${nowIso}`);
+      console.log(`  - Date for query: ${today}`);
       
       // Debug: Log the actual current date
       console.log('📅 DATE DEBUG:');
@@ -549,26 +564,51 @@ export const useBeacon = () => {
         beaconId,
         today,
         nowIso,
-        query: `beacon_id=${beaconId}, session_date=${today}, attendance_window_start>=${nowIso}, attendance_window_end<=${nowIso}`
+        query: `beacon_id=${beaconId}, session_date=${today}, attendance_window_start<=${nowIso}, attendance_window_end>=${nowIso}`
       });
-      const { data: session, error } = await supabase
+      
+      // DEBUG: Let's also try a simpler query to see what's happening
+      const { data: simpleQuery, error: simpleError } = await supabase
+        .from('class_sessions')
+        .select('id, attendance_window_start, attendance_window_end')
+        .eq('beacon_id', beaconId)
+        .eq('session_date', today);
+      
+      console.log('🔍 SIMPLE QUERY RESULT:', simpleQuery);
+      if (simpleQuery && simpleQuery.length > 0) {
+        simpleQuery.forEach((s, i) => {
+          const start = new Date(s.attendance_window_start);
+          const end = new Date(s.attendance_window_end);
+          const current = new Date(localTimeString);
+          console.log(`Session ${i + 1}:`);
+          console.log(`  - Start: ${s.attendance_window_start} (${start.toISOString()})`);
+          console.log(`  - End: ${s.attendance_window_end} (${end.toISOString()})`);
+          console.log(`  - Current (Local): ${localTimeString} (${current.toISOString()})`);
+          console.log(`  - Start <= Current: ${start <= current ? '✅' : '❌'}`);
+          console.log(`  - End >= Current: ${end >= current ? '✅' : '❌'}`);
+        });
+      }
+      const { data: sessions, error } = await supabase
         .from('class_sessions')
         .select(`id, beacon_id, course_id, start_time, end_time, session_date, attendance_window_start, attendance_window_end`)
         .eq('beacon_id', beaconId)
         .eq('session_date', today)
-        .lte('attendance_window_start', nowIso)
-        .gte('attendance_window_end', nowIso)
-        .maybeSingle();
+        .lte('attendance_window_start', localTimeString)
+        .gte('attendance_window_end', localTimeString);
+      
+      // Get the first active session (or null if none)
+      const session = sessions && sessions.length > 0 ? sessions[0] : null;
       // After the main session query
-      console.log('BLE DEBUG: Active sessions found:', session ? 1 : 0, session);
-      console.log('[DEBUG] Raw query response:', { session, error });
+      console.log('BLE DEBUG: Active sessions found:', sessions ? sessions.length : 0, sessions);
+      console.log('[DEBUG] Raw query response:', { sessions, error });
       
       // Log detailed query analysis
       console.log('🔍 QUERY ANALYSIS:');
       console.log(`  - Beacon ID: ${beaconId}`);
       console.log(`  - Date: ${today}`);
-      console.log(`  - Current time: ${nowIso}`);
-      console.log(`  - Query: attendance_window_start <= ${nowIso} AND attendance_window_end >= ${nowIso}`);
+      console.log(`  - Current time (UTC): ${nowIso}`);
+      console.log(`  - Current time (Local): ${localTimeString}`);
+      console.log(`  - Query: attendance_window_start <= ${localTimeString} AND attendance_window_end >= ${localTimeString}`);
       console.log(`  - Result: ${session ? '✅ FOUND' : '❌ NOT FOUND'}`);
       
       if (session) {
@@ -621,11 +661,25 @@ export const useBeacon = () => {
       if (session) {
         // Log and toast attendance window check
         const nowUtc = new Date().toISOString();
-        const inWindow = nowUtc >= session.attendance_window_start && nowUtc <= session.attendance_window_end;
+        const nowLocal = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+        
+        // The session times are stored as local time strings, so compare as strings
+        const currentTimeString = localTimeString; // "2025-07-20 03:08:33"
+        const sessionStartString = session.attendance_window_start; // "2025-07-20T02:37:14"
+        const sessionEndString = session.attendance_window_end; // "2025-07-20T03:37:14"
+        
+        // Convert session times to same format as current time for string comparison
+        const sessionStartFormatted = sessionStartString.replace('T', ' ').slice(0, 19);
+        const sessionEndFormatted = sessionEndString.replace('T', ' ').slice(0, 19);
+        
+        // Compare as strings (local time format)
+        const inWindow = currentTimeString >= sessionStartFormatted && currentTimeString <= sessionEndFormatted;
         console.log('[DEBUG] Attendance window check:', {
           nowUtc,
-          windowStart: session.attendance_window_start,
-          windowEnd: session.attendance_window_end,
+          nowLocal: nowLocal.toISOString(),
+          currentTimeString,
+          sessionStartFormatted,
+          sessionEndFormatted,
           inWindow,
         });
         Toast.show({
