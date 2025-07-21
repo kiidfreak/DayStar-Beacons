@@ -135,6 +135,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
           student_id: user.id,
           session_id: sessionId,
           course_code: courseObj.code,
+          course_name: courseObj.name, // Add course_name for BLE and all check-ins
           check_in_time: new Date().toISOString(),
           status: 'present',
           method: dbMethod,
