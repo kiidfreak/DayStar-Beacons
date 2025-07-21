@@ -3,6 +3,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { useThemeStore } from '@/store/themeStore';
+import { AttendanceService } from '@/services/attendanceService';
+import { useAuthStore } from '@/store/authStore';
 
 interface StatsData {
   totalSessions: number;
@@ -15,6 +17,7 @@ interface StatsData {
 export function AttendanceStats() {
   const { attendanceRecords } = useAttendanceStore();
   const { themeColors } = useThemeStore();
+  const { user } = useAuthStore();
   const [stats, setStats] = useState<StatsData>({
     totalSessions: 0,
     attendedSessions: 0,
@@ -25,9 +28,10 @@ export function AttendanceStats() {
 
   useEffect(() => {
     calculateStats();
-  }, [attendanceRecords]);
+  }, [attendanceRecords, user]);
 
-  const calculateStats = () => {
+  const calculateStats = async () => {
+    if (!user) return;
     const now = new Date();
     const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -42,11 +46,14 @@ export function AttendanceStats() {
       return recordDate >= monthStart;
     });
 
-    const totalSessions = attendanceRecords.length;
-    const attendedSessions = attendanceRecords.filter(record => 
-      record.status === 'present'
-    ).length;
-
+    // Fetch all past sessions for the user
+    const pastSessions = await AttendanceService.getPastSessionsForUser(user.id);
+    // Build a set of session IDs the user attended
+    const attendedSessionIds = new Set(attendanceRecords.map(r => r.session_id));
+    // Count absents: sessions with no attendance record
+    const absent = pastSessions.filter(session => !attendedSessionIds.has(session.id)).length;
+    const attendedSessions = attendanceRecords.filter(record => record.status === 'present').length;
+    const totalSessions = attendedSessions + absent;
     const attendanceRate = totalSessions > 0 ? (attendedSessions / totalSessions) * 100 : 0;
 
     setStats({

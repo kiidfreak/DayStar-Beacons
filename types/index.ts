@@ -142,6 +142,7 @@ export interface AttendanceRecord {
   session_id: string;
   course_code: string;
   check_in_time: string;
+  check_out_time?: string; // Added for checkout functionality
   status: 'pending' | 'present' | 'absent';
   created_at: string;
 }
@@ -153,6 +154,18 @@ export interface CourseSession {
   start_time: string;
   end_time: string;
   is_active: boolean;
+}
+
+export interface BeaconSession {
+  id: string;
+  beacon_id: string;
+  course_id: string;
+  start_time: string;
+  end_time: string;
+  session_date: string;
+  attendance_window_start?: string;
+  attendance_window_end?: string;
+  course_name?: string; // Added for UI display
 }
 
 export type BeaconStatus = 'scanning' | 'detected' | 'connected' | 'error' | 'inactive';

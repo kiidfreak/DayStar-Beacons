@@ -24,7 +24,7 @@ export default function QRScannerScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
   const router = useRouter();
-  const [isScanning, setIsScanning] = useState(false);
+  const [isScanning, setIsScanning] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<{
     success: boolean;

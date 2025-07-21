@@ -67,22 +67,18 @@ export class QRCodeService {
 
       console.log('QR Code Service: Enrollment verified');
 
-      // Find active session for the course
-      const today = new Date().toISOString().split('T')[0];
-      const currentTime = new Date().toLocaleTimeString('en-US', { 
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
+      // Use UTC for date and time
+      const now = new Date();
+      const todayUTC = now.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+      const currentTimeUTC = now.toISOString().substr(11, 8); // 'HH:MM:SS'
 
       const { data: session, error: sessionError } = await supabase
         .from('class_sessions')
         .select('*')
         .eq('course_id', qrCode.course_id)
-        .eq('session_date', today)
-        .gte('start_time', currentTime)
-        .lte('end_time', currentTime)
+        .eq('session_date', todayUTC)
+        .lte('start_time', currentTimeUTC)
+        .gte('end_time', currentTimeUTC)
         .single();
 
       if (sessionError || !session) {
@@ -114,7 +110,7 @@ export class QRCodeService {
           course_id: qrCode.course_id,
           course_code: qrCode.courses?.code || qrCode.course_name,
           course_name: qrCode.courses?.name || qrCode.course_name,
-          date: today,
+          date: todayUTC,
           status: 'verified',
           method: 'QR',
           check_in_time: new Date().toISOString(),

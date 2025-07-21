@@ -23,9 +23,14 @@ export default function HistoryScreen() {
         const data = await AttendanceService.getStudentAttendance(user.id);
         setRecords(data);
         // Calculate analytics
-        const total = data.length;
         const present = data.filter(r => r.status === 'present').length;
-        const absent = data.filter(r => r.status === 'absent').length;
+        // Fetch all past sessions for the user
+        const pastSessions = await AttendanceService.getPastSessionsForUser(user.id);
+        // Build a set of session IDs the user attended
+        const attendedSessionIds = new Set(data.map(r => r.session_id));
+        // Count absents: sessions with no attendance record
+        const absent = pastSessions.filter(session => !attendedSessionIds.has(session.id)).length;
+        const total = present + absent;
         setAnalytics({ total, present, absent });
       } catch {
         setRecords([]);
@@ -131,12 +136,18 @@ export default function HistoryScreen() {
               return (
                 <View key={record.id} style={{ marginBottom: 12 }}>
                   <TouchableOpacity onPress={() => setExpanded(isOpen ? null : record.id)}>
-                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>{record.courseName}</Text>
+                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>
+                      {record.courseName || record.courseCode}
+                      {record.courseCode && record.courseName && (
+                        <Text style={{ color: colors.textSecondary, fontSize: 13 }}> ({record.courseCode})</Text>
+                      )}
+                    </Text>
                     <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{record.date} • {record.status}</Text>
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={{ marginTop: 6, paddingLeft: 8 }}>
                       {record.checkInTime && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Check-in: {new Date(record.checkInTime).toLocaleTimeString()}</Text>}
+                      {record.checkOutTime && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Check-out: {new Date(record.checkOutTime).toLocaleTimeString()}</Text>}
                       {record.method && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Method: {record.method}</Text>}
                       {(record.latitude && record.longitude) && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Location: {record.latitude}, {record.longitude}</Text>}
                       {record.verifiedBy && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Verified By: {record.verifiedBy}</Text>}

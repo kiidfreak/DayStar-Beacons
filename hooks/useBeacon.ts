@@ -66,47 +66,6 @@ export const useBeacon = () => {
   // Get the BleManager instance
   const manager = new BleManager();
 
-  // Fetch registered beacon MAC addresses for enrolled courses on mount
-  useEffect(() => {
-    const fetchAssignedBeacons = async () => {
-      if (!user) return;
-      // Step 1: Get enrolled course IDs
-      const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('student_course_enrollments')
-        .select('course_id')
-        .eq('student_id', user.id)
-        .eq('status', 'active');
-      if (enrollmentsError || !enrollments || enrollments.length === 0) {
-        setRegisteredBeaconMacs(new Set());
-        setError('Please enroll in a course first.');
-        return;
-      }
-      const courseIds = enrollments.map(e => e.course_id);
-      // Step 2: Get assigned beacon MACs for those courses
-      const { data: assignments, error: assignmentsError } = await supabase
-        .from('beacon_assignments')
-        .select('beacon:ble_beacons(mac_address)')
-        .in('course_id', courseIds);
-      if (assignmentsError || !assignments) {
-        setRegisteredBeaconMacs(new Set());
-        setError('No beacons assigned to your courses.');
-        return;
-      }
-      const macs = (assignments || [])
-        .map(a => {
-          const beacon = a.beacon as { mac_address?: string } | null;
-          return beacon && typeof beacon.mac_address === 'string'
-            ? beacon.mac_address.toUpperCase()
-            : undefined;
-        })
-        .filter((mac): mac is string => Boolean(mac));
-      setRegisteredBeaconMacs(new Set(macs));
-      // Debug: print the MACs loaded from assignments
-      console.log('DEBUG: Registered MACs from beacon_assignments:', macs);
-    };
-    fetchAssignedBeacons();
-  }, [user]);
-
   // Request Bluetooth permissions
   const requestBluetoothPermissions = useCallback(async () => {
     console.log('🔐 Requesting Bluetooth permissions...');
@@ -190,30 +149,6 @@ export const useBeacon = () => {
       return true;
     }
   }, []);
-
-  // Initialize Bluetooth manager and start scanning when authenticated and MACs are loaded
-  useEffect(() => {
-    console.log('🔧 Initializing Bluetooth manager');
-    // Start scanning automatically when user is authenticated and MACs are loaded
-    if (user && !isScanning && registeredBeaconMacs.size > 0) {
-      console.log('🔧 User authenticated and MACs loaded, starting automatic scanning');
-      // Delay the start to avoid dependency issues
-      setTimeout(() => {
-        if (user && !isScanning && registeredBeaconMacs.size > 0) {
-          startContinuousScanning();
-        }
-      }, 1000);
-    }
-    return () => {
-      console.log('🔧 Cleaning up Bluetooth manager');
-      if (continuousScanRef.current) {
-        clearInterval(continuousScanRef.current);
-      }
-      if (sessionCheckIntervalRef.current) {
-        clearInterval(sessionCheckIntervalRef.current);
-      }
-    };
-  }, [user, isScanning, registeredBeaconMacs]);
 
   // Start continuous scanning for beacons
   const startContinuousScanning = useCallback(async () => {
@@ -330,35 +265,26 @@ export const useBeacon = () => {
           // Commented out most scan debug logs
           // console.log('📱 Device scan callback triggered');
           if (scanError) {
-            // Improved error logging: include error.reason if available
-            console.log('📱 Scan error:', scanError, scanError?.reason);
-            console.error('❌ Beacon scan error:', scanError, scanError?.reason);
-            // In BLE scan error handling (startDeviceScan), improve error message for throttling
-            if (scanError.reason) {
-              Toast.show({
-                type: 'error',
-                text1: 'Beacon scan error',
-                text2: `BLE scan failed: ${scanError.reason}`,
-              });
-            } else if (scanError.message && scanError.message.includes('Undocumented scan throttle')) {
+            // Handle BLE scan throttle gracefully
+            if (
+              scanError.message &&
+              scanError.message.includes('Undocumented scan throttle')
+            ) {
               Toast.show({
                 type: 'info',
-                text1: 'Beacon scan throttled',
-                text2: 'Bluetooth scanning is temporarily throttled by your device. Please wait a few minutes and try again.',
+                text1: 'Bluetooth scanning is temporarily paused by your device.',
+                text2: 'Please wait a few minutes and try again.',
+                visibilityTime: 5000,
               });
-            } else if (scanError.message && scanError.message.includes('Unknown error occurred')) {
-              Toast.show({
-                type: 'error',
-                text1: 'Beacon scan error',
-                text2: 'Bluetooth scan failed due to an unknown error. Please ensure all permissions are granted, location services are enabled, and try restarting the app.',
-              });
-            } else {
-              Toast.show({
-                type: 'error',
-                text1: 'Beacon scan error',
-                text2: scanError.message || scanError.toString() || 'Beacon scan failed',
-              });
+              return;
             }
+            // For all other errors, show a neutral info toast instead of a red error
+            Toast.show({
+              type: 'info',
+              text1: 'Bluetooth scan issue',
+              text2: scanError.message || 'Please check your Bluetooth and try again.',
+              visibilityTime: 4000,
+            });
             return;
           }
           // Commented out most scan debug logs
@@ -368,7 +294,7 @@ export const useBeacon = () => {
           
           if (device) {
             const mac = (device.id || '').toUpperCase();
-            // Debug: print scanned and registered MACs
+            // Only show devices registered in the database
             if (!registeredBeaconMacs.has(mac)) {
               // Only log unregistered devices occasionally to reduce spam
               if (Math.random() < 0.1) { // 10% chance to log
@@ -421,6 +347,91 @@ export const useBeacon = () => {
       setIsScanning(false);
     }
   }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked, registeredBeaconMacs]);
+
+  // Listen for Bluetooth state changes
+  useEffect(() => {
+    const subscription = manager.onStateChange((state) => {
+      console.log('🔄 Bluetooth state changed:', state);
+      if (state === 'PoweredOn') {
+        // If Bluetooth is turned on, clear error and restart scanning if needed
+        setError(null);
+        if (user && !isScanning && registeredBeaconMacs.size > 0) {
+          startContinuousScanning();
+        }
+      }
+      if (state !== 'PoweredOn') {
+        setError(`Bluetooth not ready. State: ${state}. Please enable Bluetooth on your device.`);
+      }
+    }, true); // true = emit current state immediately
+    return () => {
+      subscription.remove();
+    };
+  }, [manager, user, isScanning, registeredBeaconMacs, startContinuousScanning]);
+
+  // Fetch registered beacon MAC addresses for enrolled courses on mount
+  useEffect(() => {
+    const fetchAssignedBeacons = async () => {
+      if (!user) return;
+      // Step 1: Get enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('student_course_enrollments')
+        .select('course_id')
+        .eq('student_id', user.id)
+        .eq('status', 'active');
+      if (enrollmentsError || !enrollments || enrollments.length === 0) {
+        setRegisteredBeaconMacs(new Set());
+        setError('Please enroll in a course first.');
+        return;
+      }
+      const courseIds = enrollments.map(e => e.course_id);
+      // Step 2: Get assigned beacon MACs for those courses
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('beacon_assignments')
+        .select('beacon:ble_beacons(mac_address)')
+        .in('course_id', courseIds);
+      if (assignmentsError || !assignments) {
+        setRegisteredBeaconMacs(new Set());
+        setError('No beacons assigned to your courses.');
+        return;
+      }
+      const macs = (assignments || [])
+        .map(a => {
+          const beacon = a.beacon as { mac_address?: string } | null;
+          return beacon && typeof beacon.mac_address === 'string'
+            ? beacon.mac_address.toUpperCase()
+            : undefined;
+        })
+        .filter((mac): mac is string => Boolean(mac));
+      setRegisteredBeaconMacs(new Set(macs));
+      // Debug: print the MACs loaded from assignments
+      console.log('DEBUG: Registered MACs from beacon_assignments:', macs);
+    };
+    fetchAssignedBeacons();
+  }, [user]);
+
+  // Initialize Bluetooth manager and start scanning when authenticated and MACs are loaded
+  useEffect(() => {
+    console.log('🔧 Initializing Bluetooth manager');
+    // Start scanning automatically when user is authenticated and MACs are loaded
+    if (user && !isScanning && registeredBeaconMacs.size > 0) {
+      console.log('🔧 User authenticated and MACs loaded, starting automatic scanning');
+      // Delay the start to avoid dependency issues
+      setTimeout(() => {
+        if (user && !isScanning && registeredBeaconMacs.size > 0) {
+          startContinuousScanning();
+        }
+      }, 1000);
+    }
+    return () => {
+      console.log('🔧 Cleaning up Bluetooth manager');
+      if (continuousScanRef.current) {
+        clearInterval(continuousScanRef.current);
+      }
+      if (sessionCheckIntervalRef.current) {
+        clearInterval(sessionCheckIntervalRef.current);
+      }
+    };
+  }, [user, isScanning, registeredBeaconMacs]);
 
   // Stop continuous scanning
   const stopContinuousScanning = useCallback(() => {
@@ -510,13 +521,8 @@ export const useBeacon = () => {
       // After getting current time
       console.log('BLE DEBUG: Current time info:', { today, currentTime: now.toTimeString().split(' ')[0], now: now.toISOString() });
       // DEBUG: Show current UTC time and query window
-      Toast.show({
-        type: 'info',
-        text1: 'Debug: Attendance Query',
-        text2: `UTC now: ${nowIso.slice(0,19).replace('T',' ')}\nDate: ${today}\nBeacon: ${macAddress}`,
-        autoHide: false, // Stays until dismissed
-      });
-      console.log('[DEBUG] UTC now:', nowIso, 'Date:', today);
+      // REMOVE DEBUG LOGS AND TOASTS FOR ATTENDANCE QUERY AND SESSION PARAMS
+      // ... remove all console.log and Toast.show calls for debug/query info ...
       // Get current date and time
       const currentTime = now.toTimeString().split(' ')[0];
       // DEBUG: Log query params
@@ -590,7 +596,7 @@ export const useBeacon = () => {
       }
       const { data: sessions, error } = await supabase
         .from('class_sessions')
-        .select(`id, beacon_id, course_id, start_time, end_time, session_date, attendance_window_start, attendance_window_end`)
+        .select(`id, beacon_id, course_id, start_time, end_time, session_date, attendance_window_start, attendance_window_end, course:courses(name)`)
         .eq('beacon_id', beaconId)
         .eq('session_date', today)
         .lte('attendance_window_start', localTimeString)
@@ -612,6 +618,8 @@ export const useBeacon = () => {
       console.log(`  - Result: ${session ? '✅ FOUND' : '❌ NOT FOUND'}`);
       
       if (session) {
+        // Attach course_name for UI display
+        setCurrentSession({ ...session, course_name: session.course?.name || '' });
         console.log(`  - Session ID: ${session.id}`);
         console.log(`  - Window: ${session.attendance_window_start} to ${session.attendance_window_end}`);
       }
@@ -623,18 +631,6 @@ export const useBeacon = () => {
         text2: session 
           ? `Session ID: ${session.id}\nWindow: ${session.attendance_window_start} to ${session.attendance_window_end}`
           : `Query params:\nBeacon: ${beaconId}\nDate: ${today}\nTime: ${nowIso}`,
-        autoHide: false,
-      });
-      // Log and toast the full query params
-      console.log('[DEBUG] Query params:', {
-        beaconId,
-        today,
-        nowIso,
-      });
-      Toast.show({
-        type: 'info',
-        text1: 'Session Query Params',
-        text2: `beaconId: ${beaconId}\ntoday: ${today}\nnow: ${nowIso.slice(0,19).replace('T',' ')}\nquery: attendance_window_start>=${nowIso.slice(0,19)} AND attendance_window_end<=${nowIso.slice(0,19)}`,
         autoHide: false,
       });
       // DEBUG: Log session query result
@@ -682,12 +678,8 @@ export const useBeacon = () => {
           sessionEndFormatted,
           inWindow,
         });
-        Toast.show({
-          type: inWindow ? 'success' : 'error',
-          text1: inWindow ? 'Within Attendance Window' : 'Outside Attendance Window',
-          text2: `Now: ${nowUtc.slice(0,19).replace('T',' ')}\nStart: ${session.attendance_window_start}\nEnd: ${session.attendance_window_end}`,
-          visibilityTime: 4000,
-        });
+        // Remove debug Toast and logs for attendance window
+        // if (!inWindow) { ... } else { ... }
         if (!inWindow) {
           setIsConnected(false);
           setAttendanceMarked(false);
@@ -710,6 +702,8 @@ export const useBeacon = () => {
           });
           setAttendanceMarked(true);
           setIsConnected(true);
+          setError(null); // Clear any error state
+          Toast.hide(); // Dismiss any visible error toast
         } else if (error && typeof error === 'object' && 'message' in error && error.message.includes('already marked')) {
           // Only show a single info toast, no red error
           Toast.show({
@@ -719,33 +713,19 @@ export const useBeacon = () => {
           });
           setAttendanceMarked(true);
           setIsConnected(true);
+          setError(null); // Clear any error state
+          Toast.hide(); // Dismiss any visible error toast
         }
       } else {
-        // If no session found, fetch all sessions for today for this beacon
-        const { data: allSessions, error: allSessionsError } = await supabase
-          .from('class_sessions')
-          .select('id, attendance_window_start, attendance_window_end, start_time, end_time')
-          .eq('beacon_id', beaconId)
-          .eq('session_date', today);
-        console.log('[DEBUG] All sessions for today:', allSessions);
+        // Show a clean UI toast message for no active session
         Toast.show({
-          type: 'info',
-          text1: 'All Sessions Today',
-          text2: allSessions && allSessions.length > 0
-            ? allSessions.map(s => `ID: ${s.id}\nStart: ${s.attendance_window_start}\nEnd: ${s.attendance_window_end}`).join('\n---\n')
-            : 'None',
-          autoHide: false,
+          type: 'info', // Use info instead of error
+          text1: 'No active session found for this beacon.',
+          visibilityTime: 3000,
         });
         setIsConnected(false);
         setAttendanceMarked(false);
-        console.log('⏰ SESSION ENDED: No active sessions found for beacon');
-        console.log('🔄 Resetting beacon connection state');
-        Toast.show({
-          type: 'info',
-          text1: 'Session Ended',
-          text2: 'The session has ended. Beacon connection has been reset.',
-          visibilityTime: 3500,
-        });
+        return;
       }
     } catch (error) {
       console.error('❌ Error checking beacon session:', error);
@@ -757,7 +737,7 @@ export const useBeacon = () => {
       } else if (error) {
         errorMsg = error.toString();
       }
-      setError(errorMsg);
+      setError(errorMsg); // Remove or comment out this line to avoid triggering red error toasts
     }
   };
 

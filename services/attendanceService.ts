@@ -154,6 +154,7 @@ export class AttendanceService {
         method: record.method,
         status: record.status,
         checkInTime: record.check_in_time,
+        checkOutTime: record.check_out_time, // <-- add this line
         latitude: record.latitude,
         longitude: record.longitude,
         locationAccuracy: record.location_accuracy,
@@ -478,5 +479,46 @@ export class AttendanceService {
       console.error('Error fetching sessions for beacon:', error);
       throw error;
     }
+  }
+
+  /**
+   * Record checkout time for a student's attendance record
+   */
+  static async recordCheckout(
+    sessionId: string,
+    studentId: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('attendance_records')
+      .update({ check_out_time: new Date().toISOString() })
+      .eq('session_id', sessionId)
+      .eq('student_id', studentId);
+    if (error) throw error;
+  }
+
+  /**
+   * Get all past sessions for a user's enrolled courses
+   */
+  static async getPastSessionsForUser(studentId: string): Promise<any[]> {
+    // Get the user's active enrolled courses
+    const { data: enrollments, error: enrollmentsError } = await supabase
+      .from('student_course_enrollments')
+      .select('course_id')
+      .eq('student_id', studentId)
+      .eq('status', 'active');
+    if (enrollmentsError) throw enrollmentsError;
+    if (!enrollments || enrollments.length === 0) {
+      return [];
+    }
+    const courseIds = enrollments.map(e => e.course_id);
+    // Get all sessions for those courses that have ended
+    const now = new Date().toISOString();
+    const { data: sessions, error } = await supabase
+      .from('class_sessions')
+      .select('*')
+      .in('course_id', courseIds)
+      .lt('session_date', now);
+    if (error) throw error;
+    return sessions || [];
   }
 } 
