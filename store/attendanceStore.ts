@@ -1,33 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AttendanceRecord, Course, BeaconStatus, CheckInPrompt, DayOfWeek } from '@/types';
+import { AttendanceRecord, Course, BeaconStatus, CheckInPrompt, DayOfWeek, CourseSession } from '@/types';
 import { CourseService } from '@/services/courseService';
 import { AttendanceService } from '@/services/attendanceService';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
-
-interface AttendanceRecord {
-  id: string;
-  student_id: string;
-  session_id: string;
-  course_id: string;
-  check_in_time: string;
-  check_out_time?: string;
-  attendance_method: 'qr' | 'beacon' | 'manual';
-  status: 'present' | 'absent' | 'late';
-  created_at: string;
-}
-
-interface CourseSession {
-  id: string;
-  course_id: string;
-  course_name: string;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-  beacon_id?: string;
-}
 
 interface AttendanceState {
   // State
@@ -41,7 +19,7 @@ interface AttendanceState {
   
   // Actions
   fetchAttendanceRecords: () => Promise<void>;
-  markAttendance: (sessionId: string, method: 'qr' | 'beacon' | 'manual') => Promise<boolean>;
+  markAttendance: (sessionId: string, method: string) => Promise<boolean>;
   setBannerMessage: (message: string | null) => void;
   clearBannerMessage: () => void;
   setBeaconStatus: (status: 'scanning' | 'detected' | 'connected' | 'error' | 'inactive') => void;
@@ -98,7 +76,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
   },
 
   // Mark attendance
-  markAttendance: async (sessionId: string, method: 'qr' | 'beacon' | 'manual') => {
+  markAttendance: async (sessionId: string, method: string) => {
     console.log('📝 markAttendance called with sessionId:', sessionId, 'method:', method);
     
     const { user } = useAuthStore.getState();
@@ -148,15 +126,19 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       else if (method === 'qr') dbMethod = 'QR';
       else if (method === 'manual') dbMethod = 'MANUAL';
 
+      // Fix sessionData.courses usage (array or object)
+      const courseObj = Array.isArray(sessionData.courses) ? sessionData.courses[0] : sessionData.courses;
+
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance_records')
         .insert({
           student_id: user.id,
           session_id: sessionId,
-          course_code: sessionData.courses.code,
+          course_code: courseObj.code,
           check_in_time: new Date().toISOString(),
           status: 'present',
           method: dbMethod,
+          date: new Date().toISOString().split('T')[0],
         })
         .select()
         .single();
@@ -176,8 +158,9 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         bannerMessage: 'Attendance marked successfully!',
         currentSession: {
           id: sessionId,
-          course_code: sessionData.courses.code,
-          course_name: sessionData.courses.name,
+          course_id: sessionData.course_id,
+          course_code: courseObj.code,
+          course_name: courseObj.name,
           start_time: new Date().toISOString(),
           end_time: new Date().toISOString(),
           is_active: true,

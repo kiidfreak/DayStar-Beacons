@@ -6,6 +6,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { AttendanceService } from '@/services/attendanceService';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '@/store/authStore';
+import { useAttendanceStore } from '@/store/attendanceStore';
 
 export const BeaconStatus = () => {
   const { 
@@ -25,9 +26,12 @@ export const BeaconStatus = () => {
   } = useBeacon();
   const { themeColors } = useThemeStore();
   const { user } = useAuthStore();
+  const { fetchAttendanceRecords } = useAttendanceStore();
   const [showAllBeacons, setShowAllBeacons] = useState(false);
   const [lastSeenBeacon, setLastSeenBeacon] = useState(Date.now());
   const [beaconLostWarned, setBeaconLostWarned] = useState(false);
+  const [currentAttendanceRecord, setCurrentAttendanceRecord] = useState<any>(null);
+  const [pendingCheckout, setPendingCheckout] = useState(false);
 
   // Fallback colors
   const colors = themeColors || {
@@ -91,6 +95,11 @@ export const BeaconStatus = () => {
     console.log('✅ Finished checkBeaconSessionAndMarkAttendance for:', macAddress);
     setIsConnecting(false);
     startContinuousScanning();
+    // Fetch the latest attendance record after check-in
+    if (currentSession && user) {
+      const record = await AttendanceService.getAttendanceRecord(currentSession.id, user.id);
+      setCurrentAttendanceRecord(record);
+    }
   };
 
   // Check if session is ongoing
@@ -102,33 +111,55 @@ export const BeaconStatus = () => {
   };
 
   // Handle checkout
-  const handleCheckOut = async () => {
-    if (!currentSession || !user) return;
-    if (isSessionOngoing()) {
-      Alert.alert(
-        'Check Out',
-        'The session is still ongoing. Are you sure you want to check out?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Check Out', style: 'destructive', onPress: async () => {
-            await AttendanceService.recordCheckout(currentSession.id, user.id);
-            Toast.show({
-              type: 'success',
-              text1: 'Checked out successfully!',
-              visibilityTime: 3000,
-            });
-          }},
-        ]
-      );
-    } else {
-      await AttendanceService.recordCheckout(currentSession.id, user.id);
-      Toast.show({
-        type: 'success',
-        text1: 'Checked out successfully!',
-        visibilityTime: 3000,
-      });
-    }
+  const handleCheckOut = () => {
+    const sessionId = currentSession?.id || currentAttendanceRecord?.session_id;
+    if (!sessionId || !user) return;
+    Alert.alert(
+      'Check Out',
+      'Are you sure you want to check out and log your attendance sign out time?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Check Out', style: 'destructive', onPress: () => setPendingCheckout(true) },
+      ]
+    );
   };
+
+  // Run async checkout after confirmation
+  React.useEffect(() => {
+    const sessionId = currentSession?.id || currentAttendanceRecord?.session_id;
+    if (pendingCheckout) {
+      console.log('pendingCheckout effect triggered', { sessionId, user });
+    }
+    const doCheckout = async () => {
+      if (!pendingCheckout || !sessionId || !user) return;
+      try {
+        await AttendanceService.recordCheckout(sessionId, user.id);
+        const record = await AttendanceService.getAttendanceRecord(sessionId, user.id);
+        setCurrentAttendanceRecord(record);
+        Toast.show({
+          type: 'success',
+          text1: 'Checked out successfully!',
+          visibilityTime: 3000,
+        });
+      } catch (e) {
+        let errorMsg = 'An error occurred while checking out.';
+        if (e && typeof e === 'object' && 'message' in e && typeof (e as any).message === 'string') {
+          errorMsg = (e as any).message;
+        }
+        console.error('Checkout error:', e);
+        Toast.show({
+          type: 'error',
+          text1: 'Checkout failed',
+          text2: errorMsg,
+          visibilityTime: 4000,
+        });
+      } finally {
+        setPendingCheckout(false);
+      }
+    };
+    doCheckout();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCheckout]);
 
   // Track last seen beacon time
   React.useEffect(() => {
@@ -155,6 +186,17 @@ export const BeaconStatus = () => {
       return () => clearInterval(interval);
     }
   }, [attendanceMarked, lastSeenBeacon, beaconLostWarned]);
+
+  // Fetch the current attendance record after check-in or on mount if session exists
+  React.useEffect(() => {
+    const fetchRecord = async () => {
+      if (currentSession && user) {
+        const record = await AttendanceService.getAttendanceRecord(currentSession.id, user.id);
+        setCurrentAttendanceRecord(record);
+      }
+    };
+    fetchRecord();
+  }, [currentSession, user, attendanceMarked]);
 
   console.log('📊 BeaconStatus render - isScanning:', isScanning, 'error:', error, 'beacons:', beacons.length, 'attendanceMarked:', attendanceMarked);
 
@@ -278,10 +320,10 @@ export const BeaconStatus = () => {
       )}
 
       {/* Check Out button if attendance is marked and no checkout time */}
-      {attendanceMarked && currentSession && !(currentSession as any).check_out_time && (
+      {currentAttendanceRecord && !currentAttendanceRecord.check_out_time && (
         <TouchableOpacity
           style={[styles.scanButton, { backgroundColor: colors.warning }]}
-          onPress={handleCheckOut}
+          onPress={() => { console.log('Check Out button pressed'); handleCheckOut(); }}
         >
           <MaterialCommunityIcons 
             name="logout" 

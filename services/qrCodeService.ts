@@ -71,6 +71,12 @@ export class QRCodeService {
       const now = new Date();
       const todayUTC = now.toISOString().split('T')[0]; // 'YYYY-MM-DD'
       const currentTimeUTC = now.toISOString().substr(11, 8); // 'HH:MM:SS'
+      console.log('Session lookup params (UTC):', {
+        course_id: qrCode.course_id,
+        session_date: todayUTC,
+        currentTimeUTC,
+      });
+      // Admins: Always enter session times in UTC!
 
       const { data: session, error: sessionError } = await supabase
         .from('class_sessions')
@@ -80,6 +86,7 @@ export class QRCodeService {
         .lte('start_time', currentTimeUTC)
         .gte('end_time', currentTimeUTC)
         .single();
+      console.log('Session query result (UTC):', { session, sessionError });
 
       if (sessionError || !session) {
         console.log('QR Code Service: No active session found', sessionError);

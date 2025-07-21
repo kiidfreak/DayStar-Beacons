@@ -618,21 +618,20 @@ export const useBeacon = () => {
       console.log(`  - Result: ${session ? '✅ FOUND' : '❌ NOT FOUND'}`);
       
       if (session) {
-        // Attach course_name for UI display
-        setCurrentSession({ ...session, course_name: session.course?.name || '' });
+        setCurrentSession(session);
         console.log(`  - Session ID: ${session.id}`);
         console.log(`  - Window: ${session.attendance_window_start} to ${session.attendance_window_end}`);
       }
       
       // Show query result on screen
-      Toast.show({
-        type: session ? 'success' : 'error',
-        text1: session ? 'Session Found!' : 'No Session Found',
-        text2: session 
-          ? `Session ID: ${session.id}\nWindow: ${session.attendance_window_start} to ${session.attendance_window_end}`
-          : `Query params:\nBeacon: ${beaconId}\nDate: ${today}\nTime: ${nowIso}`,
-        autoHide: false,
-      });
+      if (!session) {
+        Toast.show({
+          type: 'error',
+          text1: 'No Session Found',
+          text2: `Query params:\nBeacon: ${beaconId}\nDate: ${today}\nTime: ${nowIso}`,
+          autoHide: false
+        });
+      }
       // DEBUG: Log session query result
       console.log('[DEBUG] class_sessions query result:', { session, error });
       if (error) {

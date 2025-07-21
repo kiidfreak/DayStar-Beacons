@@ -521,4 +521,18 @@ export class AttendanceService {
     if (error) throw error;
     return sessions || [];
   }
+
+  /**
+   * Get a single attendance record for a session and student
+   */
+  static async getAttendanceRecord(sessionId: string, studentId: string) {
+    const { data, error } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('student_id', studentId)
+      .single();
+    if (error) return null;
+    return data;
+  }
 } 
