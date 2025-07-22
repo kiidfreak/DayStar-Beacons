@@ -62,6 +62,7 @@ export const useBeacon = () => {
   const scanTimeoutRef = useRef<number | null>(null);
   const sessionCheckIntervalRef = useRef<number | null>(null);
   const continuousScanRef = useRef<number | null>(null);
+  const beaconUpdateThrottleRef = useRef<Map<string, number>>(new Map());
 
   // Get the BleManager instance
   const manager = new BleManager();
@@ -311,16 +312,32 @@ export const useBeacon = () => {
               timestamp: Date.now(),
             };
 
-            console.log('📝 Adding beacon data:', beaconData);
-            setBeacons(prev => {
-              const existing = prev.find(b => b.id === beaconData.id);
-              if (existing) {
-                console.log('🔄 Updating existing beacon');
-                return prev.map(b => b.id === beaconData.id ? beaconData : b);
-              }
-              console.log('➕ Adding new beacon');
-              return [...prev, beaconData];
-            });
+            // Throttle beacon updates to prevent excessive re-renders
+            const now = Date.now();
+            const shouldUpdate = !beaconUpdateThrottleRef.current.has(beaconData.id) || 
+              (now - (beaconUpdateThrottleRef.current.get(beaconData.id) || 0)) > 1000; // 1 second throttle
+            
+            if (shouldUpdate) {
+              console.log('📝 Adding/updating beacon data:', beaconData);
+              beaconUpdateThrottleRef.current.set(beaconData.id, now);
+              
+              setBeacons(prev => {
+                const existing = prev.find(b => b.id === beaconData.id);
+                if (existing) {
+                  // Only update if RSSI changed significantly (±5 dBm) or it's been >5 seconds
+                  const rssiDiff = Math.abs(existing.rssi - beaconData.rssi);
+                  const timeDiff = now - existing.timestamp;
+                  
+                  if (rssiDiff >= 5 || timeDiff > 5000) {
+                    console.log('🔄 Updating existing beacon (significant change)');
+                    return prev.map(b => b.id === beaconData.id ? beaconData : b);
+                  }
+                  return prev; // No significant change, don't update
+                }
+                console.log('➕ Adding new beacon');
+                return [...prev, beaconData];
+              });
+            }
             // (No auto-connect here)
           } else {
             console.log('⚠️ Device callback but no device data');
