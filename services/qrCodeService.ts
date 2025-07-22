@@ -71,22 +71,52 @@ export class QRCodeService {
       const now = new Date();
       const todayUTC = now.toISOString().split('T')[0]; // 'YYYY-MM-DD'
       const currentTimeUTC = now.toISOString().substr(11, 8); // 'HH:MM:SS'
+      const currentTimestamp = now.toISOString();
+      
       console.log('Session lookup params (UTC):', {
         course_id: qrCode.course_id,
         session_date: todayUTC,
         currentTimeUTC,
+        currentTimestamp,
       });
-      // Admins: Always enter session times in UTC!
 
-      const { data: session, error: sessionError } = await supabase
+      // First try to find session using attendance_window_start/end (improved logic)
+      let session = null;
+      let sessionError = null;
+
+      console.log('Trying attendance window lookup first...');
+      const { data: windowSession, error: windowError } = await supabase
         .from('class_sessions')
         .select('*')
         .eq('course_id', qrCode.course_id)
         .eq('session_date', todayUTC)
-        .lte('start_time', currentTimeUTC)
-        .gte('end_time', currentTimeUTC)
+        .not('attendance_window_start', 'is', null)
+        .not('attendance_window_end', 'is', null)
+        .lte('attendance_window_start', currentTimestamp)
+        .gte('attendance_window_end', currentTimestamp)
         .single();
-      console.log('Session query result (UTC):', { session, sessionError });
+
+      console.log('Attendance window query result:', { windowSession, windowError });
+
+      if (!windowError && windowSession) {
+        session = windowSession;
+        console.log('Found session using attendance window');
+      } else {
+        console.log('No session found with attendance window, trying fallback to start_time/end_time...');
+        // Fallback to original logic using start_time/end_time
+        const { data: timeSession, error: timeError } = await supabase
+          .from('class_sessions')
+          .select('*')
+          .eq('course_id', qrCode.course_id)
+          .eq('session_date', todayUTC)
+          .lte('start_time', currentTimeUTC)
+          .gte('end_time', currentTimeUTC)
+          .single();
+        
+        console.log('Start/end time query result:', { timeSession, timeError });
+        session = timeSession;
+        sessionError = timeError;
+      }
 
       if (sessionError || !session) {
         console.log('QR Code Service: No active session found', sessionError);
