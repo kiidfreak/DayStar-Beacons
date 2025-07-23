@@ -141,9 +141,12 @@ export interface AttendanceRecord {
   student_id: string;
   session_id: string;
   course_code: string;
+  course_name?: string; // Added for UI display
   check_in_time: string;
   check_out_time?: string; // Added for checkout functionality
   status: 'pending' | 'present' | 'absent';
+  method?: string; // Added for tracking attendance method
+  date?: string; // Added for date tracking
   created_at: string;
 }
 
