@@ -348,7 +348,7 @@ export const BeaconStatus = () => {
                 {presenceStatus.attendanceMarked 
                   ? `You've been in the room for ${presenceStatus.timeInRoom} minutes`
                   : presenceStatus.waitTimeElapsed 
-                    ? 'Ready to record attendance'
+                    ? 'Ready to record attendance (automatic marking in progress...)'
                     : `${presenceStatus.remainingTime} minutes remaining before attendance is recorded`
                 }
               </Text>
@@ -375,6 +375,20 @@ export const BeaconStatus = () => {
             Check Out
           </Text>
         </TouchableOpacity>
+      )}
+
+      {/* Debug: Show presence data for development */}
+      {__DEV__ && presenceData.size > 0 && (
+        <View style={[styles.debugContainer, { backgroundColor: colors.highlight }]}>
+          <Text style={[styles.debugTitle, { color: colors.text }]}>Debug: Presence Data</Text>
+          {Array.from(presenceData.entries()).map(([beaconId, presence]) => (
+            <Text key={beaconId} style={[styles.debugText, { color: colors.textSecondary }]}>
+              Beacon {beaconId}: Present={presence.isPresent ? 'Yes' : 'No'}, 
+              WaitTimeElapsed={presence.waitTimeElapsed ? 'Yes' : 'No'}, 
+              AttendanceMarked={presence.attendanceMarked ? 'Yes' : 'No'}
+            </Text>
+          ))}
+        </View>
       )}
 
       {/* Automatic Attendance Toggle */}
@@ -597,5 +611,19 @@ const styles = StyleSheet.create({
   scanningText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  debugContainer: {
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  debugTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  debugText: {
+    fontSize: 10,
+    fontFamily: 'monospace',
   },
 });
