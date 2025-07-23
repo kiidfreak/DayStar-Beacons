@@ -258,6 +258,14 @@ export const BeaconStatus = () => {
         </View>
       )}
 
+      {/* Scanning indicator - always show when scanning is active */}
+      {isScanning && (
+        <View style={[styles.scanningIndicator, { backgroundColor: colors.warning }]}> 
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.scanningText, { color: colors.textSecondary, marginLeft: 8 }]}>Scanning for beacons...</Text>
+        </View>
+      )}
+
       {/* Show found beacons */}
       {beacons.length > 0 && (
         <View style={styles.beaconsList}>
@@ -350,21 +358,7 @@ export const BeaconStatus = () => {
       })()}
 
       {/* Manual scan button - only show if no automatic attendance is happening */}
-      {!isScanning && !attendanceMarked && !error && presenceData.size === 0 && (
-        <TouchableOpacity
-          style={[styles.scanButton, { backgroundColor: colors.primary }]}
-          onPress={handleStartScan}
-        >
-          <MaterialCommunityIcons 
-            name="bluetooth" 
-            size={20} 
-            color="#FFFFFF" 
-          />
-          <Text style={styles.scanButtonText}>
-            Start Scanning
-          </Text>
-        </TouchableOpacity>
-      )}
+      {/* Removed manual scan button for automatic scanning */}
 
       {/* Check Out button if attendance is marked and no checkout time */}
       {currentAttendanceRecord && !currentAttendanceRecord.check_out_time && (
@@ -591,5 +585,17 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scanningIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  scanningText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

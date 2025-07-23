@@ -38,6 +38,7 @@ export default function HomeScreen() {
     console.log('HomeScreen: useEffect triggered with user:', user?.id);
     if (user) {
       fetchAttendanceRecords();
+      // Optionally, trigger other fetches for courses/stats if needed
     }
   }, [user, fetchAttendanceRecords]);
 

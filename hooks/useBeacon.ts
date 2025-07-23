@@ -240,6 +240,12 @@ export const useBeacon = () => {
           newMap.delete(beaconId);
           return newMap;
         });
+        Toast.show({
+          type: 'info',
+          text1: 'No active sessions found',
+          text2: 'Scanning will resume automatically.',
+          visibilityTime: 4000,
+        });
         return;
       }
 
@@ -1045,6 +1051,12 @@ export const useBeacon = () => {
       console.log('🔧 Cleanup complete (manager preserved)');
     };
   }, []); // Empty dependency array to only run on mount/unmount
+
+  React.useEffect(() => {
+    if (user && permissionGranted && !isScanning) {
+      startContinuousScanning();
+    }
+  }, [user, permissionGranted, isScanning, startContinuousScanning]);
 
   return {
     isScanning,
