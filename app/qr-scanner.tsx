@@ -24,7 +24,7 @@ export default function QRScannerScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
   const router = useRouter();
-  const [isScanning, setIsScanning] = useState(false);
+  const [isScanning, setIsScanning] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<{
     success: boolean;
@@ -176,20 +176,15 @@ export default function QRScannerScreen() {
           </Text>
         </Card>
 
-        {lastScanResult && (
+        {lastScanResult && lastScanResult.success && (
           <Card elevated style={{...styles.resultCard, backgroundColor: colors.card}}>
             <View style={styles.resultHeader}>
               <MaterialCommunityIcons 
-                name={lastScanResult.success ? "check-circle" : "alert-circle"} 
+                name="check-circle" 
                 size={24} 
-                color={lastScanResult.success ? colors.success : colors.error} 
+                color={colors.success} 
               />
-              <Text style={[
-                styles.resultTitle, 
-                { color: lastScanResult.success ? colors.success : colors.error }
-              ]}>
-                {lastScanResult.success ? 'Success' : 'Failed'}
-              </Text>
+              <Text style={[styles.resultTitle, { color: colors.success }]}>Success</Text>
             </View>
             <Text style={[styles.resultMessage, { color: colors.text }]}>
               {lastScanResult.message}

@@ -1,33 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AttendanceRecord, Course, BeaconStatus, CheckInPrompt, DayOfWeek } from '@/types';
+import { AttendanceRecord, Course, BeaconStatus, CheckInPrompt, DayOfWeek, CourseSession } from '@/types';
 import { CourseService } from '@/services/courseService';
 import { AttendanceService } from '@/services/attendanceService';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
-
-interface AttendanceRecord {
-  id: string;
-  student_id: string;
-  session_id: string;
-  course_id: string;
-  check_in_time: string;
-  check_out_time?: string;
-  attendance_method: 'qr' | 'beacon' | 'manual';
-  status: 'present' | 'absent' | 'late';
-  created_at: string;
-}
-
-interface CourseSession {
-  id: string;
-  course_id: string;
-  course_name: string;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-  beacon_id?: string;
-}
 
 interface AttendanceState {
   // State
@@ -41,7 +19,7 @@ interface AttendanceState {
   
   // Actions
   fetchAttendanceRecords: () => Promise<void>;
-  markAttendance: (sessionId: string, method: 'qr' | 'beacon' | 'manual') => Promise<boolean>;
+  markAttendance: (sessionId: string, method: string) => Promise<boolean>;
   setBannerMessage: (message: string | null) => void;
   clearBannerMessage: () => void;
   setBeaconStatus: (status: 'scanning' | 'detected' | 'connected' | 'error' | 'inactive') => void;
@@ -97,8 +75,8 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     }
   },
 
-  // Mark attendance
-  markAttendance: async (sessionId: string, method: 'qr' | 'beacon' | 'manual') => {
+  // Mark attendance with optimized performance
+  markAttendance: async (sessionId: string, method: string) => {
     console.log('📝 markAttendance called with sessionId:', sessionId, 'method:', method);
     
     const { user } = useAuthStore.getState();
@@ -107,89 +85,148 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       return false;
     }
 
-    console.log('👤 User found:', user.id);
+    // Set loading state immediately for better UX
+    set({ isLoading: true, error: null });
 
     try {
-      // Check if already marked attendance for this session
-      const existingRecord = get().attendanceRecords.find(
+      // Check if already marked attendance for this session (optimized)
+      const state = get();
+      const existingRecord = state.attendanceRecords.find(
         record => record.session_id === sessionId
       );
 
       if (existingRecord) {
         console.log('⚠️ Attendance already marked for this session');
-        set({ bannerMessage: 'Attendance already marked for this session' });
+        set({ 
+          bannerMessage: 'Attendance already marked for this session',
+          isLoading: false 
+        });
         return false;
       }
 
-      console.log('🔍 Fetching session details...');
-      // Get session details
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('class_sessions')
-        .select(`
-          id,
-          course_id,
-          courses!inner(name, code)
-        `)
-        .eq('id', sessionId)
-        .single();
+      // Optimistic UI update - show success immediately
+      const optimisticRecord = {
+        id: `temp-${Date.now()}`, // Temporary ID
+        student_id: user.id,
+        session_id: sessionId,
+        course_code: 'Loading...', // Will be updated
+        course_name: 'Loading...', // Will be updated
+        check_in_time: new Date().toISOString(),
+        status: 'present' as const,
+        method: method === 'beacon' ? 'BLE' : method === 'qr' ? 'QR' : 'MANUAL',
+        date: new Date().toISOString().split('T')[0],
+        created_at: new Date().toISOString(),
+        verified_by: null
+      };
 
-      console.log('📊 Session query result:', { sessionData, sessionError });
-
-      if (sessionError || !sessionData) {
-        console.error('❌ Error fetching session:', sessionError);
-        set({ bannerMessage: 'Session not found' });
-        return false;
-      }
-
-      console.log('📝 Creating attendance record...');
-      // Create attendance record
-      const { data: attendanceData, error: attendanceError } = await supabase
-        .from('attendance_records')
-        .insert({
-          student_id: user.id,
-          session_id: sessionId,
-          course_code: sessionData.courses.code,
-          check_in_time: new Date().toISOString(),
-          status: 'present',
-        })
-        .select()
-        .single();
-
-      console.log('📊 Attendance insert result:', { attendanceData, attendanceError });
-
-      if (attendanceError) {
-        console.error('❌ Error marking attendance:', attendanceError);
-        set({ bannerMessage: 'Failed to mark attendance' });
-        return false;
-      }
-
-      console.log('✅ Attendance marked successfully, updating local state...');
-      // Update local state
+      // Update UI immediately (optimistic update)
       set(state => ({
-        attendanceRecords: [attendanceData, ...state.attendanceRecords],
+        attendanceRecords: [optimisticRecord, ...state.attendanceRecords],
         bannerMessage: 'Attendance marked successfully!',
-        currentSession: {
-          id: sessionId,
-          course_code: sessionData.courses.code,
-          course_name: sessionData.courses.name,
-          start_time: new Date().toISOString(),
-          end_time: new Date().toISOString(),
-          is_active: true,
-        }
+        isLoading: false
       }));
 
-      console.log('✅ markAttendance completed successfully');
+      // Perform background operations without blocking UI
+      setTimeout(async () => {
+        try {
+          console.log('🔍 Fetching session details in background...');
+          
+          // Get session details
+          const { data: sessionData, error: sessionError } = await supabase
+            .from('class_sessions')
+            .select(`
+              id,
+              course_id,
+              courses!inner(name, code)
+            `)
+            .eq('id', sessionId)
+            .single();
+
+          if (sessionError || !sessionData) {
+            throw new Error('Session not found');
+          }
+
+          // Map method to correct enum value
+          let dbMethod = method;
+          if (method === 'beacon') dbMethod = 'BLE';
+          else if (method === 'qr') dbMethod = 'QR';
+          else if (method === 'manual') dbMethod = 'MANUAL';
+
+          const courseObj = Array.isArray(sessionData.courses) ? sessionData.courses[0] : sessionData.courses;
+
+          // Insert actual record
+          const { data: attendanceData, error: attendanceError } = await supabase
+            .from('attendance_records')
+            .insert({
+              student_id: user.id,
+              session_id: sessionId,
+              course_code: courseObj.code,
+              course_name: courseObj.name,
+              check_in_time: optimisticRecord.check_in_time,
+              status: 'present',
+              method: dbMethod,
+              date: optimisticRecord.date,
+            })
+            .select()
+            .single();
+
+          if (attendanceError) {
+            throw new Error('Failed to record attendance');
+          }
+
+          // Update the optimistic record with real data
+          set(state => ({
+            attendanceRecords: state.attendanceRecords.map(record => 
+              record.id === optimisticRecord.id ? attendanceData : record
+            ),
+            currentSession: {
+              id: sessionId,
+              course_id: sessionData.course_id,
+              course_code: courseObj.code,
+              course_name: courseObj.name,
+              start_time: new Date().toISOString(),
+              end_time: new Date().toISOString(),
+              is_active: true,
+            }
+          }));
+
+          console.log('✅ Background attendance recording completed');
+        } catch (backgroundError) {
+          console.error('❌ Background error:', backgroundError);
+          
+          // Revert optimistic update on error
+          set(state => ({
+            attendanceRecords: state.attendanceRecords.filter(record => record.id !== optimisticRecord.id),
+            bannerMessage: 'Failed to mark attendance - please try again',
+            error: backgroundError instanceof Error ? backgroundError.message : 'Unknown error'
+          }));
+        }
+      }, 0); // Execute in next tick
+
       return true;
     } catch (error) {
       console.error('❌ Error in markAttendance:', error);
-      set({ bannerMessage: 'Failed to mark attendance' });
+      set({ 
+        bannerMessage: 'Failed to mark attendance',
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       return false;
     }
   },
 
-  // Banner message actions
+  // Banner message actions with auto-clear
   setBannerMessage: (message: string | null) => {
     set({ bannerMessage: message });
+    
+    // Auto-clear success messages after 3 seconds
+    if (message && !message.toLowerCase().includes('error') && !message.toLowerCase().includes('failed')) {
+      setTimeout(() => {
+        set(state => ({ 
+          bannerMessage: state.bannerMessage === message ? null : state.bannerMessage 
+        }));
+      }, 3000);
+    }
   },
 
   clearBannerMessage: () => {

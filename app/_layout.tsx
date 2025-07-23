@@ -11,6 +11,7 @@ import { useUniversityStore } from "@/store/universityStore";
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { Feather } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/themeStore';
+import Toast from 'react-native-toast-message';
 
 export const unstable_settings = {
   // Make sure the app starts with loading screen
@@ -208,7 +209,8 @@ function RootLayoutNav() {
           router.replace('/(auth)/select-university');
         }
       } else if (!isAuthenticated || !user) {
-        if (!isOnLogin) {
+        const isOnRegister = currentPath === '/(auth)/register' || currentPath === '/register' || currentPath.endsWith('/register');
+        if (!isOnLogin && !isOnRegister) {
           console.log('University selected, not authenticated, navigating to login');
           router.replace('/(auth)/login');
         }
@@ -341,6 +343,7 @@ function RootLayoutNav() {
           }} 
         />
       </Stack>
+      <Toast />
     </>
   );
 }

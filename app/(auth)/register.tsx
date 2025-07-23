@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import { CourseService } from '@/services/courseService';
 import { Course } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { useUniversityStore } from '@/store/universityStore';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -18,6 +19,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { login } = useAuthStore();
   const { themeColors } = useThemeStore();
+  const { university } = useUniversityStore();
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<RegistrationStep>('personal');
   const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
@@ -65,8 +67,12 @@ export default function RegisterScreen() {
   const loadAvailableCourses = async () => {
     setLoadingCourses(true);
     try {
-      // Get all available courses for registration (no student ID yet)
-      const courses = await CourseService.getAvailableCourses('', '');
+      // Use university id if available, otherwise fetch all courses
+      let courses;
+      let uniId = university && university.id ? university.id : '';
+      let studentId = null;
+      console.log('Calling getAvailableCourses with:', { uniId, studentId });
+      courses = await CourseService.getAvailableCourses(uniId, studentId);
       setAvailableCourses(courses);
     } catch (error) {
       console.error('Error loading courses:', error);
@@ -206,16 +212,18 @@ export default function RegisterScreen() {
 
       console.log('Enrolling student in selected courses...');
       // Enroll student in selected courses
-      const enrollmentPromises = selectedCourses.map(courseId =>
-        supabase
+      const enrollmentPromises = selectedCourses.map(courseId => {
+        const enrollmentObj = {
+          student_id: authData.user?.id,
+          course_id: courseId,
+          status: 'active',
+          enrollment_date: new Date().toISOString(),
+        };
+        console.log('Inserting into student_course_enrollments:', enrollmentObj);
+        return supabase
           .from('student_course_enrollments')
-          .insert({
-            student_id: authData.user?.id,
-            course_id: courseId,
-            status: 'active',
-            enrollment_date: new Date().toISOString(),
-          })
-      );
+          .insert(enrollmentObj);
+      });
 
       await Promise.all(enrollmentPromises);
       console.log('Registration completed successfully');
@@ -233,7 +241,7 @@ export default function RegisterScreen() {
           // If auto-login fails, redirect to login
           Alert.alert(
             'Registration Successful',
-            `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s). Please sign in with your new account.`,
+            `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s).\n\nPlease check your email and confirm your account before signing in.`,
             [
               {
                 text: 'OK',
@@ -266,7 +274,7 @@ export default function RegisterScreen() {
         // Fallback to login screen
         Alert.alert(
           'Registration Successful',
-          `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s). Please sign in with your new account.`,
+          `Your account has been created successfully! You have been enrolled in ${selectedCourses.length} course(s).\n\nPlease check your email and confirm your account before signing in.`,
           [
             {
               text: 'OK',

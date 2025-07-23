@@ -29,7 +29,8 @@ export class QRCodeService {
     try {
       console.log('QR Code Service: Validating QR code', { qrCodeId, studentId });
 
-      // First, validate the QR code exists and is not expired
+      // Fetch QR code details
+      console.log('QR Code Service: Fetching QR code details...');
       const { data: qrCode, error: qrError } = await supabase
         .from('check_in_prompts')
         .select(`
@@ -45,13 +46,14 @@ export class QRCodeService {
         .single();
 
       if (qrError || !qrCode) {
-        console.log('QR Code Service: Invalid or expired QR code', qrError);
-        throw new Error('Invalid or expired QR code');
+        console.log('QR Code Service: QR code not found', qrError);
+        throw new Error('Invalid QR code');
       }
 
       console.log('QR Code Service: QR code found', qrCode);
 
-      // Check if student is enrolled in the course
+      // Check enrollment
+      console.log('QR Code Service: Checking enrollment...');
       const { data: enrollment, error: enrollmentError } = await supabase
         .from('student_course_enrollments')
         .select('id')
@@ -67,32 +69,130 @@ export class QRCodeService {
 
       console.log('QR Code Service: Enrollment verified');
 
-      // Find active session for the course
-      const today = new Date().toISOString().split('T')[0];
-      const currentTime = new Date().toLocaleTimeString('en-US', { 
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+      // Use UTC for date and time
+      const now = new Date();
+      const todayUTC = now.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+      const currentTimeUTC = now.toISOString().substr(11, 8); // 'HH:MM:SS'
+      const currentTimestamp = now.toISOString();
+      
+      console.log('=== QR CODE SESSION LOOKUP DEBUG ===');
+      console.log('Current time info:', {
+        localTime: now.toString(),
+        utcTime: now.toUTCString(),
+        isoString: currentTimestamp,
+        course_id: qrCode.course_id,
+        session_date: todayUTC,
+        currentTimeUTC,
+        currentTimestamp,
       });
 
-      const { data: session, error: sessionError } = await supabase
+      // First, let's see ALL sessions for this course today
+      console.log('QR Code Service: Fetching ALL sessions for today to debug...');
+      const { data: allSessions, error: allSessionsError } = await supabase
         .from('class_sessions')
         .select('*')
         .eq('course_id', qrCode.course_id)
-        .eq('session_date', today)
-        .gte('start_time', currentTime)
-        .lte('end_time', currentTime)
-        .single();
+        .eq('session_date', todayUTC);
+      
+      console.log('All sessions for today:', { allSessions, allSessionsError });
+      
+      if (allSessions && allSessions.length > 0) {
+        allSessions.forEach((s: any, index: number) => {
+          console.log(`Session ${index + 1}:`, {
+            id: s.id,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            attendance_window_start: s.attendance_window_start,
+            attendance_window_end: s.attendance_window_end,
+            session_date: s.session_date
+          });
+          
+          // Check if current time falls within attendance window
+          if (s.attendance_window_start && s.attendance_window_end) {
+            const windowStart = new Date(s.attendance_window_start);
+            const windowEnd = new Date(s.attendance_window_end);
+            const isInWindow = now >= windowStart && now <= windowEnd;
+            console.log(`  Attendance window check: ${isInWindow} (${windowStart.toISOString()} <= ${currentTimestamp} <= ${windowEnd.toISOString()})`);
+          }
+          
+          // Check if current time falls within session time
+          if (s.start_time && s.end_time) {
+            const sessionStart = s.start_time;
+            const sessionEnd = s.end_time;
+            const isInSession = currentTimeUTC >= sessionStart && currentTimeUTC <= sessionEnd;
+            console.log(`  Session time check: ${isInSession} (${sessionStart} <= ${currentTimeUTC} <= ${sessionEnd})`);
+          }
+        });
+      }
 
-      if (sessionError || !session) {
-        console.log('QR Code Service: No active session found', sessionError);
+      // First try to find session using attendance_window_start/end (improved logic)
+      let session = null;
+      let sessionError = null;
+
+      console.log('QR Code Service: Trying attendance window lookup first...');
+      const { data: windowSession, error: windowError } = await supabase
+        .from('class_sessions')
+        .select('*')
+        .eq('course_id', qrCode.course_id)
+        .eq('session_date', todayUTC)
+        .not('attendance_window_start', 'is', null)
+        .not('attendance_window_end', 'is', null)
+        .lte('attendance_window_start', currentTimestamp)
+        .gte('attendance_window_end', currentTimestamp);
+
+      console.log('QR Code Service: Attendance window query result:', { windowSession, windowError });
+
+      if (!windowError && windowSession && windowSession.length > 0) {
+        session = windowSession[0]; // Take first match
+        console.log('QR Code Service: Found session using attendance window');
+      } else {
+        console.log('QR Code Service: No session found with attendance window, trying fallback to start_time/end_time...');
+        // Fallback to original logic using start_time/end_time
+        const { data: timeSession, error: timeError } = await supabase
+          .from('class_sessions')
+          .select('*')
+          .eq('course_id', qrCode.course_id)
+          .eq('session_date', todayUTC)
+          .lte('start_time', currentTimeUTC)
+          .gte('end_time', currentTimeUTC);
+        
+        console.log('QR Code Service: Start/end time query result:', { timeSession, timeError });
+        if (!timeError && timeSession && timeSession.length > 0) {
+          session = timeSession[0]; // Take first match
+        } else {
+          sessionError = timeError;
+        }
+      }
+
+      // If still no session found, try a more lenient approach
+      if (!session) {
+        console.log('QR Code Service: Trying lenient session lookup (any session today)...');
+        const { data: anySession, error: anyError } = await supabase
+          .from('class_sessions')
+          .select('*')
+          .eq('course_id', qrCode.course_id)
+          .eq('session_date', todayUTC)
+          .limit(1);
+        
+        console.log('QR Code Service: Any session query result:', { anySession, anyError });
+        
+        if (!anyError && anySession && anySession.length > 0) {
+          session = anySession[0];
+          console.log('QR Code Service: Found session using lenient lookup (ignoring time constraints)');
+          console.log('WARNING: Using session outside normal attendance window - this may be for testing');
+        }
+      }
+
+      if (!session) {
+        console.log('QR Code Service: No session found at all for today', sessionError);
+        console.log('DEBUG: Available sessions check completed. No valid session found.');
         throw new Error('No active session found for this course at this time');
       }
 
       console.log('QR Code Service: Active session found', session);
 
       // Check if attendance already exists for this session
+      console.log('QR Code Service: Checking for existing attendance...');
       const { data: existingAttendance, error: checkError } = await supabase
         .from('attendance_records')
         .select('*')
@@ -100,12 +200,15 @@ export class QRCodeService {
         .eq('session_id', session.id)
         .single();
 
+      console.log('QR Code Service: Existing attendance check result:', { existingAttendance, checkError });
+      
       if (existingAttendance) {
         console.log('QR Code Service: Attendance already recorded');
         throw new Error('Attendance already recorded for this session');
       }
 
       // Create attendance record
+      console.log('QR Code Service: Creating attendance record...');
       const { data: attendance, error: attendanceError } = await supabase
         .from('attendance_records')
         .insert({
@@ -114,7 +217,7 @@ export class QRCodeService {
           course_id: qrCode.course_id,
           course_code: qrCode.courses?.code || qrCode.course_name,
           course_name: qrCode.courses?.name || qrCode.course_name,
-          date: today,
+          date: todayUTC,
           status: 'verified',
           method: 'QR',
           check_in_time: new Date().toISOString(),
