@@ -55,8 +55,12 @@ export const useAttendanceStore = create<AttendanceState>()(
               student_id,
               session_id,
               course_code,
+              course_name,
               check_in_time,
+              check_out_time,
               status,
+              method,
+              date,
               created_at
             `)
             .eq('student_id', user.id)

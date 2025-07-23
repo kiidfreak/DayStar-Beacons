@@ -11,44 +11,37 @@ type HistoryItemProps = {
 };
 
 export default function HistoryItem({ record }: HistoryItemProps) {
-  const { colors } = useTheme();
+  const { themeColors } = useTheme();
   
   const getStatusInfo = () => {
     switch (record.status) {
-      case 'verified':
+      case 'present':
         return {
-          icon: <Feather name="check" size={24} color={colors.success} />,
+          icon: <Feather name="check" size={24} color={themeColors.success} />,
           text: 'Present',
-          color: colors.success,
-          backgroundColor: `${colors.success}15`
+          color: themeColors.success,
+          backgroundColor: `${themeColors.success}15`
         };
       case 'pending':
         return {
-          icon: <MaterialCommunityIcons name="qrcode" size={24} color={colors.warning} />,
+          icon: <MaterialCommunityIcons name="qrcode" size={24} color={themeColors.warning} />,
           text: 'QR Check-in',
-          color: colors.warning,
-          backgroundColor: `${colors.warning}15`
-        };
-      case 'late':
-        return {
-          icon: <Feather name="alert-triangle" size={24} color={colors.warning} />,
-          text: 'Late',
-          color: colors.warning,
-          backgroundColor: `${colors.warning}15`
+          color: themeColors.warning,
+          backgroundColor: `${themeColors.warning}15`
         };
       case 'absent':
         return {
-          icon: <Feather name="x" size={24} color={colors.error} />,
+          icon: <Feather name="x" size={24} color={themeColors.error} />,
           text: 'Absent',
-          color: colors.error,
-          backgroundColor: `${colors.error}15`
+          color: themeColors.error,
+          backgroundColor: `${themeColors.error}15`
         };
       default:
         return {
-          icon: <Feather name="check" size={24} color={colors.success} />,
+          icon: <Feather name="check" size={24} color={themeColors.success} />,
           text: 'Present',
-          color: colors.success,
-          backgroundColor: `${colors.success}15`
+          color: themeColors.success,
+          backgroundColor: `${themeColors.success}15`
         };
     }
   };
@@ -64,20 +57,20 @@ export default function HistoryItem({ record }: HistoryItemProps) {
   return (
     <Card elevated style={styles.container}>
       <View style={styles.leftSection}>
-        <Text style={[styles.date, { color: colors.textSecondary }]}>
-          {formatDate(record.date)}
+        <Text style={[styles.date, { color: themeColors.textSecondary }]}>
+          {formatDate(record.check_in_time)}
         </Text>
-        <Text style={[styles.courseName, { color: colors.text }]}>
-          {record.courseName}
+        <Text style={[styles.courseName, { color: themeColors.text }]}>
+          {record.course_name || record.course_code}
         </Text>
-        <Text style={[styles.courseCode, { color: colors.primary }]}>
-          {record.courseCode}
+        <Text style={[styles.courseCode, { color: themeColors.primary }]}>
+          {record.course_code}
         </Text>
       </View>
       
       <View style={styles.rightSection}>
-        <Text style={[styles.time, { color: colors.textSecondary }]}>
-          Arrival time: {record.checkInTime}
+        <Text style={[styles.time, { color: themeColors.textSecondary }]}>
+          Arrival time: {new Date(record.check_in_time).toLocaleTimeString()}
         </Text>
         <View style={[styles.statusContainer, { backgroundColor: statusInfo.backgroundColor }]}>
           {statusInfo.icon}
