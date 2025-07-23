@@ -23,6 +23,11 @@ export const BeaconStatus = () => {
     setIsConnecting, // <-- add this
     connectedBeaconId, // <-- add this
     checkBeaconSessionAndMarkAttendance, // <-- add this
+    // New automatic attendance features
+    presenceData,
+    automaticAttendanceEnabled,
+    setAutomaticAttendanceEnabled,
+    waitTimeMinutes,
   } = useBeacon();
   const { themeColors } = useThemeStore();
   const { user } = useAuthStore();
@@ -50,7 +55,7 @@ export const BeaconStatus = () => {
   };
 
   const getStatusText = () => {
-    if (attendanceMarked) return 'Attendance Marked!';
+    if (attendanceMarked) return 'Attendance Recorded!';
     if (isConnected) return 'Connected to Beacon';
     if (isScanning) return `Scanning for Beacons... (${beacons.length} found)`;
     if (error) return 'Scan Error';
@@ -85,21 +90,29 @@ export const BeaconStatus = () => {
     requestBluetoothPermissions();
   };
 
-  // Handler to stop scanning, mark attendance, then resume scanning
+  // Get presence status for display
+  const getPresenceStatus = () => {
+    if (presenceData.size === 0) return null;
+    
+    const activePresence = Array.from(presenceData.values()).find(p => p.isPresent);
+    if (!activePresence) return null;
+    
+    const timeInRoom = (Date.now() - activePresence.firstSeen) / (1000 * 60); // minutes
+    const remainingTime = Math.max(0, waitTimeMinutes - timeInRoom);
+    
+    return {
+      timeInRoom: Math.floor(timeInRoom),
+      remainingTime: Math.ceil(remainingTime),
+      waitTimeElapsed: activePresence.waitTimeElapsed,
+      attendanceMarked: activePresence.attendanceMarked,
+    };
+  };
+
+  // Manual attendance handler (kept for backward compatibility but not used in UI)
   const handleMarkAttendance = async (macAddress: string) => {
-    console.log('🔘 Mark Attendance pressed for:', macAddress);
-    stopContinuousScanning();
-    setIsConnecting(true);
-    console.log('🟢 Calling checkBeaconSessionAndMarkAttendance for:', macAddress);
-    await checkBeaconSessionAndMarkAttendance(macAddress);
-    console.log('✅ Finished checkBeaconSessionAndMarkAttendance for:', macAddress);
-    setIsConnecting(false);
-    startContinuousScanning();
-    // Fetch the latest attendance record after check-in
-    if (currentSession && user) {
-      const record = await AttendanceService.getAttendanceRecord(currentSession.id, user.id);
-      setCurrentAttendanceRecord(record);
-    }
+    console.log('🔘 Manual attendance triggered for:', macAddress);
+    // This is now handled automatically by the presence detection system
+    // Keeping this function for potential manual override scenarios
   };
 
   // Check if session is ongoing
@@ -245,42 +258,55 @@ export const BeaconStatus = () => {
         </View>
       )}
 
+      {/* Scanning indicator - always show when scanning is active */}
+      {isScanning && (
+        <View style={[styles.scanningIndicator, { backgroundColor: colors.warning }]}> 
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.scanningText, { color: colors.textSecondary, marginLeft: 8 }]}>Scanning for beacons...</Text>
+        </View>
+      )}
+
       {/* Show found beacons */}
       {beacons.length > 0 && (
         <View style={styles.beaconsList}>
           <Text style={[styles.beaconsTitle, { color: colors.text }]}>Found Devices ({beacons.length}):</Text>
-          {visibleBeacons.map((beacon, index) => (
-            <View key={beacon.id} style={[styles.beaconItemCompact, { backgroundColor: colors.background }]}> 
-              <MaterialCommunityIcons 
-                name="bluetooth" 
-                size={16} 
-                color={colors.primary} 
-              />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={[styles.beaconNameCompact, { color: colors.text }]} numberOfLines={1}>
-                  {beacon.name && beacon.name !== 'Unknown Device' ? beacon.name : 'BLE Beacon'}
-                </Text>
-                <Text style={[styles.beaconIdCompact, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {beacon.macAddress}
-                </Text>
-              </View>
-              {attendanceMarked ? (
-                <Text style={{ color: colors.success, marginLeft: 8, fontSize: 11 }}>✓</Text>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.connectButtonCompact, { backgroundColor: colors.primary, marginLeft: 8, opacity: isConnecting ? 0.6 : 1 }]}
-                  onPress={() => handleMarkAttendance(beacon.macAddress)}
-                  disabled={isConnecting}
-                >
-                  {isConnecting ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <MaterialCommunityIcons name="bluetooth-connect" size={14} color="#FFF" />
+          {visibleBeacons.map((beacon, index) => {
+            // Check if this beacon has presence data
+            const beaconPresence = Array.from(presenceData.values()).find(p => 
+              p.beaconId === beacon.id || p.beaconId === beacon.macAddress
+            );
+            
+            return (
+              <View key={beacon.id} style={[styles.beaconItemCompact, { backgroundColor: colors.background }]}> 
+                <MaterialCommunityIcons 
+                  name="bluetooth" 
+                  size={16} 
+                  color={colors.primary} 
+                />
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={[styles.beaconNameCompact, { color: colors.text }]} numberOfLines={1}>
+                    {beacon.name && beacon.name !== 'Unknown Device' ? beacon.name : 'BLE Beacon'}
+                  </Text>
+                  <Text style={[styles.beaconIdCompact, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {beacon.macAddress}
+                  </Text>
+                  {beaconPresence && (
+                    <Text style={[styles.presenceStatus, { color: colors.textSecondary }]}>
+                      {beaconPresence.isPresent ? '🟢 Present' : '🔴 Absent'}
+                      {beaconPresence.isPresent && !beaconPresence.attendanceMarked && (
+                        beaconPresence.waitTimeElapsed ? ' • Ready' : ` • ${Math.ceil((waitTimeMinutes * 60 - (Date.now() - beaconPresence.firstSeen) / 1000) / 60)}m left`
+                      )}
+                    </Text>
                   )}
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
+                </View>
+                {beaconPresence?.attendanceMarked ? (
+                  <Text style={{ color: colors.success, marginLeft: 8, fontSize: 11 }}>✓</Text>
+                ) : beaconPresence?.isPresent && beaconPresence?.waitTimeElapsed ? (
+                  <Text style={{ color: colors.warning, marginLeft: 8, fontSize: 11 }}>⏳</Text>
+                ) : null}
+              </View>
+            );
+          })}
           {hasMoreBeacons && !showAllBeacons && (
             <TouchableOpacity style={styles.viewMoreButton} onPress={() => setShowAllBeacons(true)}>
               <Text style={styles.viewMoreText}>View More</Text>
@@ -302,22 +328,37 @@ export const BeaconStatus = () => {
         </View>
       )}
 
-      {/* Manual scan button */}
-      {!isScanning && !attendanceMarked && !error && (
-        <TouchableOpacity
-          style={[styles.scanButton, { backgroundColor: colors.primary }]}
-          onPress={handleStartScan}
-        >
-          <MaterialCommunityIcons 
-            name="bluetooth" 
-            size={20} 
-            color="#FFFFFF" 
-          />
-          <Text style={styles.scanButtonText}>
-            Start Scanning
-          </Text>
-        </TouchableOpacity>
-      )}
+      {/* Presence Status */}
+      {(() => {
+        const presenceStatus = getPresenceStatus();
+        if (!presenceStatus) return null;
+        
+        return (
+          <View style={[styles.presenceContainer, { backgroundColor: colors.highlight }]}>
+            <MaterialCommunityIcons 
+              name={presenceStatus.attendanceMarked ? "check-circle" : "clock-outline"} 
+              size={20} 
+              color={presenceStatus.attendanceMarked ? colors.success : colors.warning} 
+            />
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={[styles.presenceTitle, { color: colors.text }]}>
+                {presenceStatus.attendanceMarked ? 'Attendance Recorded' : 'Waiting for Attendance'}
+              </Text>
+              <Text style={[styles.presenceSubtitle, { color: colors.textSecondary }]}>
+                {presenceStatus.attendanceMarked 
+                  ? `You've been in the room for ${presenceStatus.timeInRoom} minutes`
+                  : presenceStatus.waitTimeElapsed 
+                    ? 'Ready to record attendance (automatic marking in progress...)'
+                    : `${presenceStatus.remainingTime} minutes remaining before attendance is recorded`
+                }
+              </Text>
+            </View>
+          </View>
+        );
+      })()}
+
+      {/* Manual scan button - only show if no automatic attendance is happening */}
+      {/* Removed manual scan button for automatic scanning */}
 
       {/* Check Out button if attendance is marked and no checkout time */}
       {currentAttendanceRecord && !currentAttendanceRecord.check_out_time && (
@@ -336,11 +377,48 @@ export const BeaconStatus = () => {
         </TouchableOpacity>
       )}
 
+      {/* Debug: Show presence data for development */}
+      {__DEV__ && presenceData.size > 0 && (
+        <View style={[styles.debugContainer, { backgroundColor: colors.highlight }]}>
+          <Text style={[styles.debugTitle, { color: colors.text }]}>Debug: Presence Data</Text>
+          {Array.from(presenceData.entries()).map(([beaconId, presence]) => (
+            <Text key={beaconId} style={[styles.debugText, { color: colors.textSecondary }]}>
+              Beacon {beaconId}: Present={presence.isPresent ? 'Yes' : 'No'}, 
+              WaitTimeElapsed={presence.waitTimeElapsed ? 'Yes' : 'No'}, 
+              AttendanceMarked={presence.attendanceMarked ? 'Yes' : 'No'}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {/* Automatic Attendance Toggle */}
+      <View style={styles.automaticToggleContainer}>
+        <Text style={[styles.automaticToggleLabel, { color: colors.text }]}>
+          Automatic Attendance
+        </Text>
+        <TouchableOpacity
+          style={[
+            styles.automaticToggle,
+            { 
+              backgroundColor: automaticAttendanceEnabled ? colors.success : colors.inactive,
+              opacity: automaticAttendanceEnabled ? 1 : 0.6
+            }
+          ]}
+          onPress={() => setAutomaticAttendanceEnabled(!automaticAttendanceEnabled)}
+        >
+          <MaterialCommunityIcons 
+            name={automaticAttendanceEnabled ? "check" : "close"} 
+            size={16} 
+            color="#FFFFFF" 
+          />
+        </TouchableOpacity>
+      </View>
+
       {attendanceMarked && (
         <View style={[styles.successMessage, { backgroundColor: colors.success }]}>
           <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
           <Text style={styles.successText}>
-            Attendance recorded successfully!
+            Attendance recorded automatically!
           </Text>
         </View>
       )}
@@ -484,5 +562,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#007AFF',
     fontWeight: '500',
+  },
+  presenceStatus: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  presenceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  presenceTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  presenceSubtitle: {
+    fontSize: 12,
+  },
+  automaticToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  automaticToggleLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  automaticToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanningIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  scanningText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  debugContainer: {
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  debugTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  debugText: {
+    fontSize: 10,
+    fontFamily: 'monospace',
   },
 });

@@ -25,6 +25,17 @@ interface BeaconSession {
   session_date: string;
 }
 
+// New interface for presence tracking
+interface PresenceData {
+  beaconId: string;
+  sessionId: string;
+  firstSeen: number;
+  lastSeen: number;
+  isPresent: boolean;
+  attendanceMarked: boolean;
+  waitTimeElapsed: boolean;
+}
+
 // Create a singleton BleManager instance
 //let bleManager: BleManager|any = new BleManager();
 //let isInitialized = false;
@@ -56,6 +67,11 @@ export const useBeacon = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedBeaconId, setConnectedBeaconId] = useState<string | null>(null);
   
+  // New state for automatic attendance detection
+  const [presenceData, setPresenceData] = useState<Map<string, PresenceData>>(new Map());
+  const [automaticAttendanceEnabled, setAutomaticAttendanceEnabled] = useState(true);
+  const [waitTimeMinutes] = useState(2); // 2 minutes wait time
+  
   const { user } = useAuthStore();
   const { markAttendance } = useAttendanceStore();
   
@@ -63,9 +79,232 @@ export const useBeacon = () => {
   const sessionCheckIntervalRef = useRef<number | null>(null);
   const continuousScanRef = useRef<number | null>(null);
   const beaconUpdateThrottleRef = useRef<Map<string, number>>(new Map());
+  const presenceCheckIntervalRef = useRef<number | null>(null);
 
   // Get the BleManager instance
   const manager = new BleManager();
+
+  // Automatic attendance detection functions
+  const updatePresenceData = useCallback((beaconId: string, sessionId: string, isPresent: boolean) => {
+    const now = Date.now();
+    setPresenceData(prev => {
+      const newMap = new Map(prev);
+      const existing = newMap.get(beaconId);
+      
+      if (existing) {
+        // Update existing presence data
+        const updated: PresenceData = {
+          ...existing,
+          lastSeen: isPresent ? now : existing.lastSeen,
+          isPresent,
+        };
+        
+        // Check if wait time has elapsed
+        const timeInRoom = (now - existing.firstSeen) / (1000 * 60); // minutes
+        const wasWaitTimeElapsed = existing.waitTimeElapsed;
+        updated.waitTimeElapsed = timeInRoom >= waitTimeMinutes;
+        
+        // Log when wait time elapses
+        if (!wasWaitTimeElapsed && updated.waitTimeElapsed) {
+          console.log(`⏰ Wait time elapsed for beacon ${beaconId}: ${timeInRoom.toFixed(1)} minutes (threshold: ${waitTimeMinutes} minutes)`);
+        }
+        
+        newMap.set(beaconId, updated);
+      } else if (isPresent) {
+        // New presence detected
+        const newPresence: PresenceData = {
+          beaconId,
+          sessionId,
+          firstSeen: now,
+          lastSeen: now,
+          isPresent: true,
+          attendanceMarked: false,
+          waitTimeElapsed: false,
+        };
+        newMap.set(beaconId, newPresence);
+      }
+      
+      return newMap;
+    });
+  }, [waitTimeMinutes]);
+
+  const checkAndMarkAutomaticAttendance = useCallback(async (beaconId: string) => {
+    // Get current presence data directly
+    setPresenceData(currentPresenceData => {
+      const presence = currentPresenceData.get(beaconId);
+      if (!presence || presence.attendanceMarked || !presence.isPresent || !presence.waitTimeElapsed) {
+        return currentPresenceData; // No changes needed
+      }
+
+      console.log('🤖 Automatic attendance check for beacon:', beaconId);
+      
+      // Mark attendance asynchronously
+      (async () => {
+        try {
+          // Get beacon MAC address
+          const { data: beacon, error: beaconError } = await supabase
+            .from('ble_beacons')
+            .select('mac_address')
+            .eq('id', beaconId)
+            .single();
+            
+          if (beaconError || !beacon) {
+            console.error('❌ Error fetching beacon MAC:', beaconError);
+            return;
+          }
+
+          // Mark attendance silently
+          const success = await markAttendance(presence.sessionId, 'beacon');
+          
+          if (success) {
+            console.log('✅ Automatic attendance marked successfully');
+            
+            // Update presence data to mark attendance as complete
+            setPresenceData(prev => {
+              const newMap = new Map(prev);
+              const existing = newMap.get(beaconId);
+              if (existing) {
+                newMap.set(beaconId, { ...existing, attendanceMarked: true });
+              }
+              return newMap;
+            });
+            
+            // Update global attendance state
+            setAttendanceMarked(true);
+            setIsConnected(true);
+            setError(null);
+            
+            // Show a subtle success notification
+            Toast.show({
+              type: 'success',
+              text1: 'Attendance recorded',
+              text2: 'You have been automatically checked in',
+              visibilityTime: 3000,
+            });
+          }
+        } catch (error) {
+          console.error('❌ Error in automatic attendance marking:', error);
+        }
+      })();
+      
+      return currentPresenceData; // Return unchanged for now
+    });
+  }, [markAttendance]);
+
+  // Start presence monitoring
+  const startPresenceMonitoring = useCallback(() => {
+    if (presenceCheckIntervalRef.current) {
+      clearInterval(presenceCheckIntervalRef.current);
+    }
+
+    presenceCheckIntervalRef.current = setInterval(() => {
+      // Check each beacon's presence and mark attendance if conditions are met
+      // Access presenceData directly to avoid dependency issues
+      setPresenceData(currentPresenceData => {
+        let attendanceTriggered = false;
+        currentPresenceData.forEach((presence, beaconId) => {
+          if (presence.isPresent && presence.waitTimeElapsed && !presence.attendanceMarked) {
+            console.log(`🤖 Triggering automatic attendance for beacon ${beaconId}`);
+            attendanceTriggered = true;
+            checkAndMarkAutomaticAttendance(beaconId);
+          }
+        });
+        
+        if (attendanceTriggered) {
+          console.log('📊 Presence monitoring: Automatic attendance triggered');
+        }
+        
+        return currentPresenceData; // Return unchanged to avoid unnecessary updates
+      });
+    }, 10000); // Check every 10 seconds
+  }, [checkAndMarkAutomaticAttendance]);
+
+  // Stop presence monitoring
+  const stopPresenceMonitoring = useCallback(() => {
+    if (presenceCheckIntervalRef.current) {
+      clearInterval(presenceCheckIntervalRef.current);
+      presenceCheckIntervalRef.current = null;
+    }
+  }, []);
+
+  // Enhanced beacon detection with automatic attendance
+  const handleBeaconDetection = useCallback(async (beacon: BeaconData) => {
+    console.log('📱 Beacon detected:', beacon.name, beacon.macAddress);
+    
+    // Check if this beacon has an active session
+    try {
+      const { data: beaconRecord, error: beaconError } = await supabase
+        .from('ble_beacons')
+        .select('id')
+        .eq('mac_address', beacon.macAddress)
+        .single();
+        
+      if (beaconError || !beaconRecord) {
+        return; // Not a registered beacon
+      }
+
+      const beaconId = beaconRecord.id;
+      
+      // Check for active session
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+      const localTimeString = localTime.toISOString().slice(0, 19).replace('T', ' ');
+      
+      const { data: sessions, error: sessionError } = await supabase
+        .from('class_sessions')
+        .select('id, attendance_window_start, attendance_window_end')
+        .eq('beacon_id', beaconId)
+        .eq('session_date', today)
+        .lte('attendance_window_start', localTimeString)
+        .gte('attendance_window_end', localTimeString);
+        
+      if (sessionError || !sessions || sessions.length === 0) {
+        // No active session, remove presence data
+        setPresenceData(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(beaconId);
+          return newMap;
+        });
+        Toast.show({
+          type: 'info',
+          text1: 'No active sessions found',
+          text2: 'Scanning will resume automatically.',
+          visibilityTime: 4000,
+        });
+        return;
+      }
+
+      const session = sessions[0];
+      
+      // Update presence data - user is present
+      updatePresenceData(beaconId, session.id, true);
+      
+    } catch (error) {
+      console.error('❌ Error in beacon detection:', error);
+    }
+  }, [updatePresenceData]);
+
+  // Check for beacon absence (user left the room)
+  const checkBeaconAbsence = useCallback(() => {
+    const now = Date.now();
+    const absenceThreshold = 30 * 1000; // 30 seconds without signal = absent
+    
+    setPresenceData(prev => {
+      const newMap = new Map(prev);
+      let hasChanges = false;
+      
+      newMap.forEach((presence, beaconId) => {
+        if (presence.isPresent && (now - presence.lastSeen) > absenceThreshold) {
+          newMap.set(beaconId, { ...presence, isPresent: false });
+          hasChanges = true;
+          console.log('🚪 User left beacon range:', beaconId);
+        }
+      });
+      
+      return hasChanges ? newMap : prev;
+    });
+  }, []);
 
   // Request Bluetooth permissions
   const requestBluetoothPermissions = useCallback(async () => {
@@ -337,8 +576,12 @@ export const useBeacon = () => {
                 console.log('➕ Adding new beacon');
                 return [...prev, beaconData];
               });
+              
+              // Trigger automatic attendance detection
+              if (automaticAttendanceEnabled) {
+                handleBeaconDetection(beaconData);
+              }
             }
-            // (No auto-connect here)
           } else {
             console.log('⚠️ Device callback but no device data');
           }
@@ -355,6 +598,22 @@ export const useBeacon = () => {
           stopContinuousScanning();
         }
       }, 30000); // Check every 30 seconds
+
+      // Start presence monitoring for automatic attendance
+      if (automaticAttendanceEnabled) {
+        startPresenceMonitoring();
+        
+        // Start absence checking
+        const absenceCheckInterval = setInterval(() => {
+          checkBeaconAbsence();
+        }, 15000); // Check every 15 seconds
+        
+        // Store the absence check interval for cleanup
+        if (continuousScanRef.current) {
+          // Store the absence interval reference for cleanup
+          (continuousScanRef.current as any).absenceCheckInterval = absenceCheckInterval;
+        }
+      }
 
       console.log('✅ Continuous scanning setup complete');
 
@@ -472,15 +731,24 @@ export const useBeacon = () => {
       if (continuousScanRef.current) {
         console.log('⏰ Clearing continuous scan interval...');
         clearInterval(continuousScanRef.current);
+        
+        // Clear absence check interval if it exists
+        if ((continuousScanRef.current as any).absenceCheckInterval) {
+          clearInterval((continuousScanRef.current as any).absenceCheckInterval);
+        }
+        
         continuousScanRef.current = null;
         console.log('⏰ Continuous scan interval cleared');
       }
+      
+      // Stop presence monitoring
+      stopPresenceMonitoring();
       
       console.log('✅ Stopped continuous beacon scanning');
     } catch (err) {
       console.error('❌ Error stopping beacon scan:', err);
     }
-  }, [isScanning, attendanceMarked, manager]);
+  }, [isScanning, attendanceMarked, manager, stopPresenceMonitoring]);
 
   // Connect to a specific device by ID (deprecated, now handled directly)
   // const connectToDevice = useCallback(async (deviceId: string) => {
@@ -787,6 +1055,12 @@ export const useBeacon = () => {
       if (continuousScanRef.current) {
         console.log('🔧 Cleaning up continuous scan interval');
         clearInterval(continuousScanRef.current);
+        
+        // Clear absence check interval if it exists
+        if ((continuousScanRef.current as any).absenceCheckInterval) {
+          clearInterval((continuousScanRef.current as any).absenceCheckInterval);
+        }
+        
         continuousScanRef.current = null;
       }
       if (sessionCheckIntervalRef.current) {
@@ -794,10 +1068,34 @@ export const useBeacon = () => {
         clearInterval(sessionCheckIntervalRef.current);
         sessionCheckIntervalRef.current = null;
       }
+      if (presenceCheckIntervalRef.current) {
+        console.log('🔧 Cleaning up presence check interval');
+        clearInterval(presenceCheckIntervalRef.current);
+        presenceCheckIntervalRef.current = null;
+      }
       // Don't destroy the manager since it's a singleton
       console.log('🔧 Cleanup complete (manager preserved)');
     };
   }, []); // Empty dependency array to only run on mount/unmount
+
+  React.useEffect(() => {
+    if (user && permissionGranted && !isScanning) {
+      startContinuousScanning();
+    }
+  }, [user, permissionGranted, isScanning, startContinuousScanning]);
+
+  // Handle automatic attendance setting changes
+  React.useEffect(() => {
+    if (isScanning) {
+      if (automaticAttendanceEnabled) {
+        console.log('🤖 Automatic attendance enabled, starting presence monitoring');
+        startPresenceMonitoring();
+      } else {
+        console.log('🤖 Automatic attendance disabled, stopping presence monitoring');
+        stopPresenceMonitoring();
+      }
+    }
+  }, [automaticAttendanceEnabled, isScanning, startPresenceMonitoring, stopPresenceMonitoring]);
 
   return {
     isScanning,
@@ -815,5 +1113,10 @@ export const useBeacon = () => {
     setIsConnecting, // Expose this for external use
     connectedBeaconId, // <-- expose this
     checkBeaconSessionAndMarkAttendance, // Expose this for direct use
+    // New automatic attendance features
+    presenceData,
+    automaticAttendanceEnabled,
+    setAutomaticAttendanceEnabled,
+    waitTimeMinutes,
   };
 };

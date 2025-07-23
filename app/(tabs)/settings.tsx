@@ -6,6 +6,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { DeviceBindingService } from '@/services/deviceBindingService';
+import { useBeacon } from '@/hooks/useBeacon';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
@@ -13,6 +14,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true); // Placeholder, implement real logic if needed
+  const { automaticAttendanceEnabled, setAutomaticAttendanceEnabled } = useBeacon();
 
   console.log('SettingsScreen: Rendering with user:', user?.id);
 
@@ -139,6 +141,28 @@ export default function SettingsScreen() {
 
         {/* Notifications Toggle */}
         {/* Removed notifications section */}
+
+        {/* Automatic Attendance Toggle */}
+        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}> 
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="bluetooth" size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Automatic Attendance</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+            <Text style={{ color: colors.textSecondary, marginRight: 12 }}>Enable automatic scanning for attendance</Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: automaticAttendanceEnabled ? colors.success : colors.inactive,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+              }}
+              onPress={() => setAutomaticAttendanceEnabled(!automaticAttendanceEnabled)}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '600' }}>{automaticAttendanceEnabled ? 'On' : 'Off'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Change Password */}
         <TouchableOpacity
