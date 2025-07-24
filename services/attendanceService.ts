@@ -535,4 +535,53 @@ export class AttendanceService {
     if (error) return null;
     return data;
   }
+
+  /**
+   * Check if a student has already marked attendance for a session
+   */
+  static async hasAttendanceRecord(sessionId: string, studentId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('student_id', studentId)
+        .single();
+        
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking attendance record:', error);
+        return false;
+      }
+      
+      return !!data; // Return true if record exists, false otherwise
+    } catch (error) {
+      console.error('Error in hasAttendanceRecord:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all session IDs where a student has already marked attendance
+   */
+  static async getAttendedSessionIds(studentId: string, sessionIds: string[]): Promise<string[]> {
+    try {
+      if (sessionIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('session_id')
+        .eq('student_id', studentId)
+        .in('session_id', sessionIds);
+        
+      if (error) {
+        console.error('Error fetching attended session IDs:', error);
+        return [];
+      }
+      
+      return data?.map(record => record.session_id) || [];
+    } catch (error) {
+      console.error('Error in getAttendedSessionIds:', error);
+      return [];
+    }
+  }
 } 

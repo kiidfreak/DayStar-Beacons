@@ -137,6 +137,22 @@ export const BeaconStatus = () => {
     );
   };
 
+  // Stop scanning when attendance is marked
+  React.useEffect(() => {
+    if (attendanceMarked && isScanning) {
+      console.log('📊 Attendance marked, stopping continuous scanning');
+      stopContinuousScanning();
+    }
+  }, [attendanceMarked, isScanning, stopContinuousScanning]);
+
+  // Stop all scanning when user logs out
+  React.useEffect(() => {
+    if (!user && isScanning) {
+      console.log('📊 User logged out, stopping all scanning activities');
+      stopContinuousScanning();
+    }
+  }, [user, isScanning, stopContinuousScanning]);
+
   // Run async checkout after confirmation
   React.useEffect(() => {
     const sessionId = currentSession?.id || currentAttendanceRecord?.session_id;
@@ -154,6 +170,10 @@ export const BeaconStatus = () => {
           text1: 'Checked out successfully!',
           visibilityTime: 3000,
         });
+        
+        // Restart scanning after successful checkout
+        console.log('📊 Checkout successful, restarting automatic scanning');
+        startContinuousScanning();
       } catch (e) {
         let errorMsg = 'An error occurred while checking out.';
         if (e && typeof e === 'object' && 'message' in e && typeof (e as any).message === 'string') {
@@ -361,7 +381,7 @@ export const BeaconStatus = () => {
       {/* Removed manual scan button for automatic scanning */}
 
       {/* Check Out button if attendance is marked and no checkout time */}
-      {currentAttendanceRecord && !currentAttendanceRecord.check_out_time && (
+      {attendanceMarked && currentAttendanceRecord && !currentAttendanceRecord.check_out_time && (
         <TouchableOpacity
           style={[styles.scanButton, { backgroundColor: colors.warning }]}
           onPress={() => { console.log('Check Out button pressed'); handleCheckOut(); }}
@@ -392,7 +412,7 @@ export const BeaconStatus = () => {
       )}
 
       {/* Automatic Attendance Toggle */}
-      <View style={styles.automaticToggleContainer}>
+      {/* <View style={styles.automaticToggleContainer}>
         <Text style={[styles.automaticToggleLabel, { color: colors.text }]}>
           Automatic Attendance
         </Text>
@@ -412,7 +432,7 @@ export const BeaconStatus = () => {
             color="#FFFFFF" 
           />
         </TouchableOpacity>
-      </View>
+      </View> */}
 
       {attendanceMarked && (
         <View style={[styles.successMessage, { backgroundColor: colors.success }]}>

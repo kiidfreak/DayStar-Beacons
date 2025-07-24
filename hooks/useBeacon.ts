@@ -4,6 +4,7 @@ import { BleManager } from 'react-native-ble-plx';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { supabase } from '@/lib/supabase';
+import { AttendanceService } from '@/services/attendanceService';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
@@ -141,6 +142,25 @@ export const useBeacon = () => {
       // Mark attendance asynchronously
       (async () => {
         try {
+          // Double-check if attendance is already marked for this session
+          if (user) {
+            const hasAttendance = await AttendanceService.hasAttendanceRecord(presence.sessionId, user.id);
+            
+            if (hasAttendance) {
+              console.log('✅ Attendance already marked for session:', presence.sessionId);
+              // Update presence data to mark attendance as complete
+              setPresenceData(prev => {
+                const newMap = new Map(prev);
+                const existing = newMap.get(beaconId);
+                if (existing) {
+                  newMap.set(beaconId, { ...existing, attendanceMarked: true });
+                }
+                return newMap;
+              });
+              return; // Don't mark attendance again
+            }
+          }
+
           // Get beacon MAC address
           const { data: beacon, error: beaconError } = await supabase
             .from('ble_beacons')
@@ -189,7 +209,7 @@ export const useBeacon = () => {
       
       return currentPresenceData; // Return unchanged for now
     });
-  }, [markAttendance]);
+  }, [markAttendance, user]);
 
   // Start presence monitoring
   const startPresenceMonitoring = useCallback(() => {
@@ -197,7 +217,7 @@ export const useBeacon = () => {
       clearInterval(presenceCheckIntervalRef.current);
     }
 
-    presenceCheckIntervalRef.current = setInterval(() => {
+    presenceCheckIntervalRef.current = setInterval(async () => {
       // Check each beacon's presence and mark attendance if conditions are met
       // Access presenceData directly to avoid dependency issues
       setPresenceData(currentPresenceData => {
@@ -226,6 +246,101 @@ export const useBeacon = () => {
       presenceCheckIntervalRef.current = null;
     }
   }, []);
+
+  // Find active sessions and their beacon MAC addresses for the user
+  const findActiveSessionsAndBeacons = useCallback(async () => {
+    if (!user) return new Set<string>();
+    
+    try {
+      console.log('🔍 Finding active sessions for user:', user.id);
+      
+      // Step 1: Get enrolled course IDs
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('student_course_enrollments')
+        .select('course_id')
+        .eq('student_id', user.id)
+        .eq('status', 'active');
+        
+      if (enrollmentsError || !enrollments || enrollments.length === 0) {
+        console.log('❌ No active enrollments found');
+        return new Set<string>();
+      }
+      
+      const courseIds = enrollments.map(e => e.course_id);
+      console.log('📚 Enrolled courses:', courseIds);
+      
+      // Step 2: Get current date and time
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+      const localTimeString = localTime.toISOString().slice(0, 19).replace('T', ' ');
+      
+      console.log('🕐 Current time:', localTimeString, 'Date:', today);
+      
+      // Step 3: Find active sessions for enrolled courses
+      const { data: activeSessions, error: sessionsError } = await supabase
+        .from('class_sessions')
+        .select(`
+          id,
+          course_id,
+          beacon_id,
+          attendance_window_start,
+          attendance_window_end,
+          session_date,
+          beacon:ble_beacons(mac_address)
+        `)
+        .in('course_id', courseIds)
+        .eq('session_date', today)
+        .lte('attendance_window_start', localTimeString)
+        .gte('attendance_window_end', localTimeString);
+        
+      if (sessionsError) {
+        console.error('❌ Error fetching active sessions:', sessionsError);
+        return new Set<string>();
+      }
+      
+      if (!activeSessions || activeSessions.length === 0) {
+        console.log('📊 No active sessions found for today');
+        return new Set<string>();
+      }
+      
+      console.log('✅ Found active sessions:', activeSessions.length);
+      
+      // Step 4: Check which sessions the user has already marked attendance for
+      const sessionIds = activeSessions.map(session => session.id);
+      const attendedSessionIds = await AttendanceService.getAttendedSessionIds(user.id, sessionIds);
+      const attendedSessionIdsSet = new Set(attendedSessionIds);
+      console.log('✅ Sessions with existing attendance:', Array.from(attendedSessionIdsSet));
+      
+      // Step 5: Filter out sessions where attendance is already marked
+      const unprocessedSessions = activeSessions.filter(session => !attendedSessionIdsSet.has(session.id));
+      
+      if (unprocessedSessions.length === 0) {
+        console.log('📊 All active sessions already have attendance marked');
+        return new Set<string>();
+      }
+      
+      console.log('✅ Sessions without attendance:', unprocessedSessions.length);
+      
+      // Step 6: Extract beacon MAC addresses from unprocessed sessions only
+      const beaconMacs = new Set<string>();
+      unprocessedSessions.forEach(session => {
+        const beacon = session.beacon as { mac_address?: string } | null;
+        if (beacon && beacon.mac_address) {
+          const macAddress = beacon.mac_address.toUpperCase();
+          beaconMacs.add(macAddress);
+          console.log(`📡 Unprocessed session ${session.id} -> Beacon MAC: ${macAddress}`);
+        }
+      });
+      
+      console.log('🎯 Beacon MACs to scan for (unprocessed sessions):', Array.from(beaconMacs));
+      return beaconMacs;
+      
+    } catch (error) {
+      console.error('❌ Error in findActiveSessionsAndBeacons:', error);
+      return new Set<string>();
+    }
+  }, [user]);
 
   // Enhanced beacon detection with automatic attendance
   const handleBeaconDetection = useCallback(async (beacon: BeaconData) => {
@@ -277,13 +392,29 @@ export const useBeacon = () => {
 
       const session = sessions[0];
       
+      // Check if user has already marked attendance for this session
+      if (user) {
+        const hasAttendance = await AttendanceService.hasAttendanceRecord(session.id, user.id);
+        
+        if (hasAttendance) {
+          console.log('✅ Attendance already marked for session:', session.id);
+          // Remove presence data for this beacon since attendance is already marked
+          setPresenceData(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(beaconId);
+            return newMap;
+          });
+          return; // Don't process this session further
+        }
+      }
+      
       // Update presence data - user is present
       updatePresenceData(beaconId, session.id, true);
       
     } catch (error) {
       console.error('❌ Error in beacon detection:', error);
     }
-  }, [updatePresenceData]);
+  }, [updatePresenceData, user]);
 
   // Check for beacon absence (user left the room)
   const checkBeaconAbsence = useCallback(() => {
@@ -392,26 +523,23 @@ export const useBeacon = () => {
 
   // Start continuous scanning for beacons
   const startContinuousScanning = useCallback(async () => {
-    // Commented out most debug logs for cleaner production
-    // console.log('🔍 startContinuousScanning called');
-    // console.log('🔍 User state:', !!user, 'User ID:', user?.id);
-    // console.log('🔍 Permission granted:', permissionGranted);
-    // console.log('🔍 Current scanning state:', isScanning);
-    // console.log('🔍 Current attendance marked:', attendanceMarked);
+    console.log('🔍 startContinuousScanning called');
+    console.log('🔍 User state:', !!user, 'User ID:', user?.id);
+    console.log('🔍 Permission granted:', permissionGranted);
+    console.log('🔍 Current scanning state:', isScanning);
+    console.log('🔍 Current attendance marked:', attendanceMarked);
 
     if (!user) {
       console.log('❌ User not authenticated, skipping beacon scan');
       return;
     }
 
-    // Fetch enrolled courses for the user
-    const { data: enrollments, error: enrollmentsError } = await supabase
-      .from('student_course_enrollments')
-      .select('course_id')
-      .eq('student_id', user.id)
-      .eq('status', 'active');
-    if (enrollmentsError || !enrollments || enrollments.length === 0) {
-      setError('Please enroll in a course first.');
+    // Find active sessions and their beacon MAC addresses
+    const activeBeaconMacs = await findActiveSessionsAndBeacons();
+    
+    if (activeBeaconMacs.size === 0) {
+      console.log('📊 No active sessions found, stopping scan');
+      setError('No active sessions found for your enrolled courses.');
       setBeacons([]);
       return;
     }
@@ -502,8 +630,7 @@ export const useBeacon = () => {
           scanMode: 2, // SCAN_MODE_LOW_LATENCY
         },
         (scanError: any, device: any) => {
-          // Commented out most scan debug logs
-          // console.log('📱 Device scan callback triggered');
+          console.log('📱 Device scan callback triggered');
           if (scanError) {
             // Handle BLE scan throttle gracefully
             if (
@@ -527,18 +654,18 @@ export const useBeacon = () => {
             });
             return;
           }
-          // Commented out most scan debug logs
-          // console.log('📱 Device found:', device?.name, device?.id);
-          // console.log('📱 Device RSSI:', device?.rssi);
-          // console.log('📱 Device isConnectable:', device?.isConnectable);
+          
+          console.log('📱 Device found:', device?.name, device?.id);
+          console.log('📱 Device RSSI:', device?.rssi);
+          console.log('📱 Device isConnectable:', device?.isConnectable);
           
           if (device) {
             const mac = (device.id || '').toUpperCase();
-            // Only show devices registered in the database
-            if (!registeredBeaconMacs.has(mac)) {
-              // Only log unregistered devices occasionally to reduce spam
-              if (Math.random() < 0.1) { // 10% chance to log
-                console.log('⛔ Device not registered:', mac);
+            // Only process devices that are part of active sessions
+            if (!activeBeaconMacs.has(mac)) {
+              // Only log non-active devices occasionally to reduce spam
+              if (Math.random() < 0.05) { // 5% chance to log
+                console.log('⛔ Device not in active sessions:', mac);
               }
               return;
             }
@@ -615,6 +742,26 @@ export const useBeacon = () => {
         }
       }
 
+      // Start periodic refresh of active sessions (every 5 minutes)
+      const sessionRefreshInterval = setInterval(async () => {
+        if (user && !attendanceMarked) {
+          console.log('🔄 Refreshing active sessions...');
+          const newActiveBeaconMacs = await findActiveSessionsAndBeacons();
+          
+          // If no active sessions found, stop scanning
+          if (newActiveBeaconMacs.size === 0) {
+            console.log('📊 No active sessions found during refresh, stopping scan');
+            stopContinuousScanning();
+            setError('No active sessions found for your enrolled courses.');
+          }
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+      
+      // Store the session refresh interval for cleanup
+      if (continuousScanRef.current) {
+        (continuousScanRef.current as any).sessionRefreshInterval = sessionRefreshInterval;
+      }
+
       console.log('✅ Continuous scanning setup complete');
 
     } catch (err) {
@@ -622,7 +769,7 @@ export const useBeacon = () => {
       setError('Failed to start beacon scanning');
       setIsScanning(false);
     }
-  }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked, registeredBeaconMacs]);
+  }, [user, permissionGranted, requestBluetoothPermissions, attendanceMarked, findActiveSessionsAndBeacons]);
 
   // Listen for Bluetooth state changes
   useEffect(() => {
@@ -631,7 +778,7 @@ export const useBeacon = () => {
       if (state === 'PoweredOn') {
         // If Bluetooth is turned on, clear error and restart scanning if needed
         setError(null);
-        if (user && !isScanning && registeredBeaconMacs.size > 0) {
+        if (user && !isScanning) {
           startContinuousScanning();
         }
       }
@@ -642,9 +789,9 @@ export const useBeacon = () => {
     return () => {
       subscription.remove();
     };
-  }, [manager, user, isScanning, registeredBeaconMacs, startContinuousScanning]);
+  }, [manager, user, isScanning, startContinuousScanning]);
 
-  // Fetch registered beacon MAC addresses for enrolled courses on mount
+  // Fetch registered beacon MAC addresses for enrolled courses on mount (legacy - kept for fallback)
   useEffect(() => {
     const fetchAssignedBeacons = async () => {
       if (!user) return;
@@ -685,15 +832,15 @@ export const useBeacon = () => {
     fetchAssignedBeacons();
   }, [user]);
 
-  // Initialize Bluetooth manager and start scanning when authenticated and MACs are loaded
+  // Initialize Bluetooth manager and start scanning when authenticated
   useEffect(() => {
     console.log('🔧 Initializing Bluetooth manager');
-    // Start scanning automatically when user is authenticated and MACs are loaded
-    if (user && !isScanning && registeredBeaconMacs.size > 0) {
-      console.log('🔧 User authenticated and MACs loaded, starting automatic scanning');
+    // Start scanning automatically when user is authenticated
+    if (user && !isScanning) {
+      console.log('🔧 User authenticated, starting automatic scanning');
       // Delay the start to avoid dependency issues
       setTimeout(() => {
-        if (user && !isScanning && registeredBeaconMacs.size > 0) {
+        if (user && !isScanning) {
           startContinuousScanning();
         }
       }, 1000);
@@ -707,7 +854,7 @@ export const useBeacon = () => {
         clearInterval(sessionCheckIntervalRef.current);
       }
     };
-  }, [user, isScanning, registeredBeaconMacs]);
+  }, [user, isScanning, startContinuousScanning]);
 
   // Stop continuous scanning
   const stopContinuousScanning = useCallback(() => {
@@ -735,6 +882,11 @@ export const useBeacon = () => {
         // Clear absence check interval if it exists
         if ((continuousScanRef.current as any).absenceCheckInterval) {
           clearInterval((continuousScanRef.current as any).absenceCheckInterval);
+        }
+        
+        // Clear session refresh interval if it exists
+        if ((continuousScanRef.current as any).sessionRefreshInterval) {
+          clearInterval((continuousScanRef.current as any).sessionRefreshInterval);
         }
         
         continuousScanRef.current = null;
@@ -939,6 +1091,24 @@ export const useBeacon = () => {
         return;
       }
       if (session) {
+        // Check if user has already marked attendance for this session
+        if (user) {
+          const hasAttendance = await AttendanceService.hasAttendanceRecord(session.id, user.id);
+          
+          if (hasAttendance) {
+            console.log('✅ Attendance already marked for session:', session.id);
+            Toast.show({
+              type: 'info',
+              text1: 'Attendance already marked for this session.',
+              visibilityTime: 3000,
+            });
+            setAttendanceMarked(true);
+            setIsConnected(true);
+            setError(null);
+            return; // Don't process this session further
+          }
+        }
+        
         // Log and toast attendance window check
         const nowUtc = new Date().toISOString();
         const nowLocal = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
@@ -1059,6 +1229,11 @@ export const useBeacon = () => {
         // Clear absence check interval if it exists
         if ((continuousScanRef.current as any).absenceCheckInterval) {
           clearInterval((continuousScanRef.current as any).absenceCheckInterval);
+        }
+        
+        // Clear session refresh interval if it exists
+        if ((continuousScanRef.current as any).sessionRefreshInterval) {
+          clearInterval((continuousScanRef.current as any).sessionRefreshInterval);
         }
         
         continuousScanRef.current = null;
