@@ -37,10 +37,25 @@ export default function HomeScreen() {
   useEffect(() => {
     console.log('HomeScreen: useEffect triggered with user:', user?.id);
     if (user) {
+      console.log('HomeScreen: Fetching attendance records for user:', user.id);
       fetchAttendanceRecords();
       // Optionally, trigger other fetches for courses/stats if needed
     }
   }, [user, fetchAttendanceRecords]);
+
+  // Refresh attendance records when component mounts or user changes
+  useEffect(() => {
+    if (user) {
+      const refreshData = async () => {
+        try {
+          await fetchAttendanceRecords();
+        } catch (error) {
+          console.error('Error refreshing attendance records:', error);
+        }
+      };
+      refreshData();
+    }
+  }, [user]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
