@@ -1,59 +1,59 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions, Switch, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
-import { DeviceBindingService } from '@/services/deviceBindingService';
-import { useBeacon } from '@/hooks/useBeacon';
+import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
-  const { theme, setTheme, themeColors, isDark } = useThemeStore();
+  const { themeColors } = useThemeStore();
   const router = useRouter();
-  const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true); // Placeholder, implement real logic if needed
-  const { automaticAttendanceEnabled, setAutomaticAttendanceEnabled } = useBeacon();
+  
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(30));
+  
+  // Notification toggles
+  const [attendanceReminders, setAttendanceReminders] = useState(true);
+  const [classAlerts, setClassAlerts] = useState(true);
+  const [systemUpdates, setSystemUpdates] = useState(false);
+  const [emailDigest, setEmailDigest] = useState(true);
 
   console.log('SettingsScreen: Rendering with user:', user?.id);
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
     background: '#FFFFFF',
-    card: '#F7F9FC',
+    card: '#FFFFFF',
     text: '#1A1D1F',
     textSecondary: '#6C7072',
-    primary: '#00AEEF',
-    secondary: '#3DDAB4',
-    border: '#E8ECF4',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#FF3B30',
-    inactive: '#C5C6C7',
-    highlight: '#E6F7FE',
+    primary: '#3B82F6',
+    secondary: '#2563EB',
+    border: '#E2E8F0',
+    success: '#10B981',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    inactive: '#9CA3AF',
+    highlight: '#EFF6FF',
   };
 
-  useEffect(() => {
-    console.log('SettingsScreen: useEffect triggered');
-    // Fetch device ID from DeviceBindingService
-    async function fetchDeviceId() {
-      try {
-        const info = await DeviceBindingService.getDeviceInfo();
-        setDeviceId(info.deviceId);
-      } catch (e) {
-        setDeviceId('Unavailable');
-      }
-    }
-    fetchDeviceId();
+  // Animation on mount
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  };
 
   const handleLogout = async () => {
     try {
@@ -64,123 +64,226 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleChangeDevice = () => {
+    // Show alert for device change
+    Alert.alert(
+      'Change Device',
+      'This will unregister your current device. You will need to register a new device for attendance tracking.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', style: 'destructive' }
+      ]
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Welcome Header */}
-        <View style={styles.welcomeHeader}>
-          <View style={styles.welcomeTextContainer}>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              {getGreeting()},
-            </Text>
-            <Text style={[styles.welcomeName, { color: colors.text }]}>
-              {user?.firstName || 'Student'}!
-            </Text>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.headerLeft}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.logoText}>T</Text>
+            </View>
+            <View style={styles.logoTextContainer}>
+              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
+            </View>
           </View>
-          <TouchableOpacity 
-            style={[styles.profileButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
+          <TouchableOpacity style={styles.menuButton}>
+            <Feather name="menu" size={24} color={colors.text} />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
-        {/* Account Info */}
-        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Account Info
+        {/* Main Title */}
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={[styles.mainTitle, { color: colors.text }]}>
+            Settings
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Manage your preferences and get help
+          </Text>
+        </Animated.View>
+
+        {/* Notification Preferences */}
+        <Animated.View 
+          style={[
+            styles.section,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={[styles.preferencesCard, { backgroundColor: colors.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="settings-outline" size={20} color={colors.text} />
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Notification Preferences
+              </Text>
+            </View>
+            <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
+              Choose which notifications you want to receive
             </Text>
+            
+            <View style={styles.preferencesList}>
+              <View style={styles.preferenceItem}>
+                <View style={styles.preferenceInfo}>
+                  <Text style={[styles.preferenceTitle, { color: colors.text }]}>
+                    Attendance Reminders
+                  </Text>
+                  <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                    Get notified about upcoming classes.
+                  </Text>
+                </View>
+                <Switch
+                  value={attendanceReminders}
+                  onValueChange={setAttendanceReminders}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              
+              <View style={styles.preferenceItem}>
+                <View style={styles.preferenceInfo}>
+                  <Text style={[styles.preferenceTitle, { color: colors.text }]}>
+                    Class Alerts
+                  </Text>
+                  <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                    Immediate alerts for missed classes.
+                  </Text>
+                </View>
+                <Switch
+                  value={classAlerts}
+                  onValueChange={setClassAlerts}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              
+              <View style={styles.preferenceItem}>
+                <View style={styles.preferenceInfo}>
+                  <Text style={[styles.preferenceTitle, { color: colors.text }]}>
+                    System Updates
+                  </Text>
+                  <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                    App updates and maintenance notices.
+                  </Text>
+                </View>
+                <Switch
+                  value={systemUpdates}
+                  onValueChange={setSystemUpdates}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              
+              <View style={styles.preferenceItem}>
+                <View style={styles.preferenceInfo}>
+                  <Text style={[styles.preferenceTitle, { color: colors.text }]}>
+                    Email Digest
+                  </Text>
+                  <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                    Weekly attendance summary via email.
+                  </Text>
+                </View>
+                <Switch
+                  value={emailDigest}
+                  onValueChange={setEmailDigest}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            </View>
           </View>
-          <Text style={{ color: colors.textSecondary }}>Name: {user?.firstName} {user?.lastName}</Text>
-          <Text style={{ color: colors.textSecondary }}>Email: {user?.email}</Text>
-          <Text style={{ color: colors.textSecondary }}>Role: {user?.role}</Text>
-        </View>
+        </Animated.View>
 
-        {/* Theme Selection */}
-        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="theme-light-dark" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Theme
+        {/* Device Management */}
+        <Animated.View 
+          style={[
+            styles.section,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={[styles.deviceCard, { backgroundColor: colors.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="phone-portrait-outline" size={20} color={colors.text} />
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Device Management
+              </Text>
+            </View>
+            <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
+              Manage your registered device for attendance tracking
             </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-            {['light', 'dark', 'system'].map(opt => (
-              <TouchableOpacity
-                key={opt}
-                style={{
-                  backgroundColor: theme === opt ? colors.primary : colors.background,
-                  borderColor: colors.primary,
-                  borderWidth: 1,
-                  borderRadius: 8,
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  marginRight: 8,
-                }}
-                onPress={() => setTheme(opt as any)}
-              >
-                <Text style={{ color: theme === opt ? '#FFF' : colors.text }}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={{ color: colors.textSecondary, marginTop: 4 }}>Current: {theme}</Text>
-        </View>
-
-        {/* Device Info */}
-        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="cellphone" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Device Info
-            </Text>
-          </View>
-          <Text style={{ color: colors.textSecondary }}>Device ID: {deviceId}</Text>
-        </View>
-
-        {/* Notifications Toggle */}
-        {/* Removed notifications section */}
-
-        {/* Automatic Attendance Toggle */}
-        <View style={[styles.settingsCard, { backgroundColor: colors.card }]}> 
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="bluetooth" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Automatic Attendance</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-            <Text style={{ color: colors.textSecondary, marginRight: 12 }}>Enable automatic scanning for attendance</Text>
-            <TouchableOpacity
-              style={{
-                backgroundColor: automaticAttendanceEnabled ? colors.success : colors.inactive,
-                borderRadius: 16,
-                paddingHorizontal: 16,
-                paddingVertical: 8,
-              }}
-              onPress={() => setAutomaticAttendanceEnabled(!automaticAttendanceEnabled)}
+            
+            <TouchableOpacity 
+              style={[styles.changeDeviceButton, { borderColor: colors.border }]}
+              onPress={handleChangeDevice}
             >
-              <Text style={{ color: '#FFF', fontWeight: '600' }}>{automaticAttendanceEnabled ? 'On' : 'Off'}</Text>
+              <Text style={[styles.changeDeviceText, { color: colors.text }]}>
+                Change Device Registration
+              </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Change Password */}
-        <TouchableOpacity
-          style={[styles.logoutButton, { backgroundColor: colors.primary, marginBottom: 16 }]}
-          onPress={() => router.push('/change-password')}
+        {/* Account Actions */}
+        <Animated.View 
+          style={[
+            styles.section,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
         >
-          <MaterialCommunityIcons name="lock-reset" size={24} color="#FFFFFF" />
-          <Text style={styles.logoutText}>Change Password</Text>
-        </TouchableOpacity>
-
-        {/* Logout Button */}
-        <TouchableOpacity 
-          style={[styles.logoutButton, { backgroundColor: colors.error }]}
-          onPress={handleLogout}
-        >
-          <MaterialCommunityIcons name="logout" size={24} color="#FFFFFF" />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+          <View style={[styles.accountCard, { backgroundColor: colors.card }]}>
+            <TouchableOpacity 
+              style={styles.accountAction}
+              onPress={() => router.push('/change-password')}
+            >
+              <Ionicons name="lock-closed-outline" size={20} color={colors.text} />
+              <Text style={[styles.accountActionText, { color: colors.text }]}>
+                Change Password
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.accountAction}
+              onPress={handleLogout}
+            >
+              <Ionicons name="log-out-outline" size={20} color={colors.error} />
+              <Text style={[styles.accountActionText, { color: colors.error }]}>
+                Sign Out
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -194,100 +297,149 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  welcomeHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  welcomeTextContainer: {
-    flex: 1,
-  },
-  greeting: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  welcomeName: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  settingsCard: {
-    padding: 24,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  sectionHeader: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
-  sectionTitle: {
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  logoText: {
+    color: '#FFFFFF',
     fontSize: 20,
-    fontWeight: '700',
-    marginLeft: 12,
+    fontWeight: 'bold',
   },
-  settingsMessage: {
-    fontSize: 16,
-    lineHeight: 22,
+  logoTextContainer: {
+    alignItems: 'flex-start',
   },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 12,
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
   },
-  actionButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionText: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
+  logoSubtitle: {
+    fontSize: 14,
     fontWeight: '500',
   },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
+  menuButton: {
+    padding: 8,
+  },
+  titleContainer: {
+    marginBottom: 32,
+  },
+  mainTitle: {
+    fontSize: screenWidth > 400 ? 32 : 28,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  section: {
     marginBottom: 24,
   },
-  logoutText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  comingSoonCard: {
-    padding: 24,
+  preferencesCard: {
     borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  deviceCard: {
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  accountCard: {
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  preferencesList: {
+    gap: 16,
+  },
+  preferenceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  comingSoonTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
+  preferenceInfo: {
+    flex: 1,
+    marginRight: 16,
   },
-  comingSoonMessage: {
+  preferenceTitle: {
     fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  preferenceDescription: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  changeDeviceButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeDeviceText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  accountAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  accountActionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    marginLeft: 12,
   },
 });

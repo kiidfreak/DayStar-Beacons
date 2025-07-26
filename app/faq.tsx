@@ -1,210 +1,295 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { useTheme } from '@/hooks/useTheme';
-import { Feather } from '@expo/vector-icons';
-import Card from '@/components/ui/Card';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useAuthStore } from '@/store/authStore';
+import { useThemeStore } from '@/store/themeStore';
+import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
 
-// Define types for FAQ data structure
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
 interface FAQItem {
+  id: number;
   question: string;
   answer: string;
-}
-
-interface FAQSection {
-  title: string;
-  items: FAQItem[];
-}
-
-type FAQData = {
-  [key: string]: FAQSection;
-};
-
-// FAQ data structure
-const faqData: FAQData = {
-  general: {
-    title: "General Questions",
-    items: [
-      {
-        question: "What is TCheck?",
-        answer: "TCheck is an automated attendance tracking system that uses beacon technology to record student presence in classes. It offers features like QR code check-in, attendance history, and real-time tracking."
-      },
-      {
-        question: "How does the attendance system work?",
-        answer: "The system uses Bluetooth beacons placed in classrooms to automatically detect and record your presence. When you enter a classroom, the app connects to the beacon and marks your attendance. You can also use QR codes as a backup check-in method."
-      },
-      {
-        question: "What should I do if I am having trouble with the app?",
-        answer: "First, ensure your Bluetooth is enabled and you are within range of the classroom. If issues persist, try restarting the app or your device. You can also contact technical support through your student portal."
-      }
-    ]
-  },
-  attendance: {
-    title: "Attendance Tracking",
-    items: [
-      {
-        question: "What happens if the beacon does not detect me?",
-        answer: "If the beacon fails to detect you, you can use the QR code check-in feature as a backup. Each classroom has a unique QR code that you can scan to mark your attendance."
-      },
-      {
-        question: "How long do I need to stay in class to be marked present?",
-        answer: "You need to be present for at least 75% of the class duration to be marked as fully present. Arriving late or leaving early may result in partial attendance or being marked as late."
-      },
-      {
-        question: "Can I check my attendance history?",
-        answer: "Yes, you can view your complete attendance history in the History section. It shows all your attendance records, including dates, times, and attendance status for each class."
-      }
-    ]
-  },
-  technical: {
-    title: "Technical Support",
-    items: [
-      {
-        question: "What should I do if I change my device?",
-        answer: "If you need to change your device, go to Settings > Device Change and submit a request. An administrator will review and approve your request within 1-2 business days."
-      },
-      {
-        question: "Why does the app need Bluetooth permission?",
-        answer: "The app requires Bluetooth to connect with classroom beacons for automated attendance tracking. Without Bluetooth permission, the automatic check-in feature will not work."
-      },
-      {
-        question: "Does the app work without internet?",
-        answer: "The app requires an internet connection to sync attendance records with the server. However, it can temporarily store attendance data offline and sync when connection is restored."
-      }
-    ]
-  },
-  account: {
-    title: "Account Management",
-    items: [
-      {
-        question: "How do I change my password?",
-        answer: "Go to Settings > Change Password. You will need to enter your current password and choose a new one that meets the security requirements."
-      },
-      {
-        question: "What happens if I forget my password?",
-        answer: "Use the Forgot Password option on the login screen. A password reset link will be sent to your registered email address."
-      },
-      {
-        question: "How can I update my profile information?",
-        answer: "Visit your profile page by tapping on your avatar in Settings. You can update certain information there. For major changes, contact your administrator."
-      }
-    ]
-  }
-};
-
-interface FAQItemProps {
-  question: string;
-  answer: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function FAQItem({ question, answer, isExpanded, onToggle }: FAQItemProps) {
-  const { colors } = useTheme();
-  
-  return (
-    <TouchableOpacity 
-      onPress={onToggle}
-      style={[styles.faqItem, { borderBottomColor: colors.border }]}
-    >
-      <View style={styles.questionContainer}>
-        <Text style={[styles.question, { color: colors.text }]}>
-          {question}
-        </Text>
-        {isExpanded ? (
-          <Feather name="chevron-up" size={20} color={colors.primary} />
-        ) : (
-          <Feather name="chevron-down" size={20} color={colors.primary} />
-        )}
-      </View>
-      
-      {isExpanded && (
-        <Text style={[styles.answer, { color: colors.textSecondary }]}>
-          {answer}
-        </Text>
-      )}
-    </TouchableOpacity>
-  );
+  category: string;
 }
 
 export default function FAQScreen() {
-  const { colors } = useTheme();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const { user } = useAuthStore();
+  const { themeColors } = useThemeStore();
+  const router = useRouter();
   
-  const toggleItem = (id: string) => {
-    setExpandedItems(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(30));
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [expandedItem, setExpandedItem] = useState<number | null>(null);
+
+  console.log('FAQScreen: Rendering with user:', user?.id);
+
+  // Fallback colors to prevent undefined errors
+  const colors = themeColors || {
+    background: '#FFFFFF',
+    card: '#FFFFFF',
+    text: '#1A1D1F',
+    textSecondary: '#6C7072',
+    primary: '#3B82F6',
+    secondary: '#2563EB',
+    border: '#E2E8F0',
+    success: '#10B981',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    inactive: '#9CA3AF',
+    highlight: '#EFF6FF',
   };
-  
-  const filterFAQs = () => {
-    const query = searchQuery.toLowerCase();
-    if (!query) return faqData;
-    
-    const filtered: FAQData = {};
-    
-    Object.entries(faqData).forEach(([key, section]) => {
-      const filteredItems = section.items.filter(
-        item => 
-          item.question.toLowerCase().includes(query) ||
-          item.answer.toLowerCase().includes(query)
-      );
-      
-      if (filteredItems.length > 0) {
-        filtered[key] = {
-          ...section,
-          items: filteredItems
-        };
-      }
-    });
-    
-    return filtered;
+
+  // Animation on mount
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const FAQData = {
+    all: [
+      { id: 1, question: "How does attendance tracking work?", answer: "Attendance is tracked automatically when you're near the classroom beacon or by scanning QR codes.", category: "attendance" },
+      { id: 2, question: "What if I forget my phone during class?", answer: "Contact your lecturer to manually mark your attendance.", category: "device" },
+      { id: 3, question: "Can I use multiple devices?", answer: "No, only one device can be registered at a time for security.", category: "device" },
+      { id: 4, question: "How do I change my registered device?", answer: "Go to Settings > Device Management to change your device.", category: "device" },
+      { id: 5, question: "Why is my attendance not being recorded?", answer: "Check your device registration and ensure you're within range of the classroom beacon.", category: "troubleshooting" },
+    ],
+    attendance: [
+      { id: 1, question: "How does attendance tracking work?", answer: "Attendance is tracked automatically when you're near the classroom beacon or by scanning QR codes.", category: "attendance" },
+    ],
+    device: [
+      { id: 2, question: "What if I forget my phone during class?", answer: "Contact your lecturer to manually mark your attendance.", category: "device" },
+      { id: 3, question: "Can I use multiple devices?", answer: "No, only one device can be registered at a time for security.", category: "device" },
+      { id: 4, question: "How do I change my registered device?", answer: "Go to Settings > Device Management to change your device.", category: "device" },
+    ],
+    troubleshooting: [
+      { id: 5, question: "Why is my attendance not being recorded?", answer: "Check your device registration and ensure you're within range of the classroom beacon.", category: "troubleshooting" },
+    ],
   };
-  
-  const filteredData = filterFAQs();
-  
+
+  const categories = [
+    { key: 'all', label: 'All' },
+    { key: 'attendance', label: 'Attendance' },
+    { key: 'device', label: 'Device' },
+    { key: 'troubleshooting', label: 'Troubleshooting' },
+  ];
+
+  const currentFAQs = FAQData[activeCategory as keyof typeof FAQData] || [];
+
+  const toggleItem = (id: number) => {
+    setExpandedItem(expandedItem === id ? null : id);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Feather name="search" size={20} color={colors.textSecondary} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Search FAQs..."
-          placeholderTextColor={colors.textSecondary}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Text style={[styles.clearText, { color: colors.primary }]}>Clear</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      
       <ScrollView 
-        style={styles.content}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {Object.entries(filteredData).map(([key, section]) => (
-          <View key={key} style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              {section.title}
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.headerLeft}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.logoText}>T</Text>
+            </View>
+            <View style={styles.logoTextContainer}>
+              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.menuButton}>
+            <Feather name="menu" size={24} color={colors.text} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Main Title */}
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.titleHeader}>
+            <Ionicons name="help-circle-outline" size={24} color={colors.text} />
+            <Text style={[styles.mainTitle, { color: colors.text }]}>
+              Frequently Asked Questions
+            </Text>
+          </View>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Find answers to common questions
+          </Text>
+        </Animated.View>
+
+        {/* Category Tabs */}
+        <Animated.View 
+          style={[
+            styles.tabsContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          {categories.map((category) => (
+            <TouchableOpacity 
+              key={category.key}
+              style={[
+                styles.tab, 
+                activeCategory === category.key && { backgroundColor: colors.primary }
+              ]}
+              onPress={() => setActiveCategory(category.key)}
+            >
+              <Text style={[
+                styles.tabText, 
+                { color: activeCategory === category.key ? '#FFFFFF' : colors.text }
+              ]}>
+                {category.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+
+        {/* FAQ List */}
+        <Animated.View 
+          style={[
+            styles.faqContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          {currentFAQs.map((item) => (
+            <TouchableOpacity 
+              key={item.id}
+              style={[styles.faqItem, { backgroundColor: colors.card }]}
+              onPress={() => toggleItem(item.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.faqHeader}>
+                <Text style={[styles.faqQuestion, { color: colors.text }]}>
+                  {item.question}
+                </Text>
+                <Ionicons 
+                  name={expandedItem === item.id ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={colors.textSecondary} 
+                />
+              </View>
+              {expandedItem === item.id && (
+                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
+                  {item.answer}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+
+        {/* Help & Support Section */}
+        <Animated.View 
+          style={[
+            styles.helpSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={[styles.helpCard, { backgroundColor: colors.card }]}>
+            <View style={styles.helpHeader}>
+              <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
+              <Text style={[styles.helpTitle, { color: colors.text }]}>
+                Help & Support
+              </Text>
+            </View>
+            <Text style={[styles.helpSubtitle, { color: colors.textSecondary }]}>
+              Get additional help and support
             </Text>
             
-            <Card elevated>
-              {section.items.map((item, index) => (
-                <FAQItem
-                  key={`${key}-${index}`}
-                  question={item.question}
-                  answer={item.answer}
-                  isExpanded={expandedItems[`${key}-${index}`]}
-                  onToggle={() => toggleItem(`${key}-${index}`)}
-                />
-              ))}
-            </Card>
+            <TouchableOpacity style={styles.helpAction}>
+              <Ionicons name="mail-outline" size={20} color={colors.text} />
+              <Text style={[styles.helpActionText, { color: colors.text }]}>
+                Contact Support (support@tallycheck.com)
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.helpAction}>
+              <Ionicons name="document-text-outline" size={20} color={colors.text} />
+              <Text style={[styles.helpActionText, { color: colors.text }]}>
+                User Guide & Documentation
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.helpAction}>
+              <Ionicons name="shield-outline" size={20} color={colors.text} />
+              <Text style={[styles.helpActionText, { color: colors.text }]}>
+                Privacy Policy & Terms
+              </Text>
+            </TouchableOpacity>
           </View>
-        ))}
+        </Animated.View>
+
+        {/* App Info */}
+        <Animated.View 
+          style={[
+            styles.appInfoSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={[styles.appInfoCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.appInfoText, { color: colors.textSecondary, textAlign: 'center' }]}>
+              TallyCheck v1.0.0
+            </Text>
+            <Text style={[styles.appInfoText, { color: colors.textSecondary, textAlign: 'center' }]}>
+              Student Attendance Tracking System
+            </Text>
+            <Text style={[styles.appInfoText, { color: colors.textSecondary, textAlign: 'center' }]}>
+              © 2024 TallyCheck. All rights reserved.
+            </Text>
+          </View>
+        </Animated.View>
+
+        {/* Footer */}
+        <Animated.View 
+          style={[
+            styles.footer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+            Daystar University
+          </Text>
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -214,60 +299,177 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchContainer: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
   },
-  searchInput: {
-    flex: 1,
-    height: '100%',
-    marginLeft: 10,
-    fontSize: 16,
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
-  clearText: {
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  logoTextContainer: {
+    alignItems: 'flex-start',
+  },
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  logoSubtitle: {
     fontSize: 14,
     fontWeight: '500',
-    marginLeft: 8,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
+  menuButton: {
+    padding: 8,
   },
-  section: {
-    marginBottom: 24,
+  titleContainer: {
+    marginBottom: 32,
   },
-  sectionTitle: {
-    fontSize: 18,
+  titleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  mainTitle: {
+    fontSize: screenWidth > 400 ? 32 : 28,
     fontWeight: '700',
-    marginBottom: 12,
-    marginLeft: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    gap: 8,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  faqContainer: {
+    marginBottom: 24,
+    gap: 12,
   },
   faqItem: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  questionContainer: {
+  faqHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  question: {
+  faqQuestion: {
     fontSize: 16,
     fontWeight: '500',
     flex: 1,
-    marginRight: 16,
+    marginRight: 12,
   },
-  answer: {
+  faqAnswer: {
     fontSize: 14,
-    marginTop: 12,
     lineHeight: 20,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  helpSection: {
+    marginBottom: 24,
+  },
+  helpCard: {
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  helpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  helpTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  helpSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  helpAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  helpActionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  appInfoSection: {
+    marginBottom: 24,
+  },
+  appInfoCard: {
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 8,
+  },
+  appInfoText: {
+    fontSize: 14,
+  },
+  footer: {
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
   },
 });

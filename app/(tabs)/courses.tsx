@@ -1,186 +1,206 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { CourseService, Enrollment } from '@/services/courseService';
-import { supabase } from '@/lib/supabase';
+import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function CoursesScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
   const router = useRouter();
-  const [allCourses, setAllCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [enrolling, setEnrolling] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  console.log('CoursesScreen user:', user);
-
-  const fetchCoursesAndEnrollments = async () => {
-    setLoading(true);
-    try {
-      // Fetch all courses
-      const { data: courses, error: coursesError } = await supabase
-        .from('courses')
-        .select(`*, instructor:users!courses_instructor_id_fkey(full_name, email)`);
-      if (coursesError) throw coursesError;
-
-      // Fetch student's enrollments
-      let enrolledIds: Set<string> = new Set();
-      if (user?.id) {
-        const { data: enrollments, error: enrollmentsError } = await supabase
-          .from('student_course_enrollments')
-          .select('course_id, status')
-          .eq('student_id', user.id)
-          .eq('status', 'active');
-        if (enrollmentsError) throw enrollmentsError;
-        enrolledIds = new Set(enrollments.map(e => e.course_id));
-      }
-
-      // Merge: add isEnrolled to each course
-      const merged = courses.map(course => ({
-        ...course,
-        isEnrolled: enrolledIds.has(course.id),
-      }));
-      setAllCourses(merged);
-    } catch (err) {
-      setAllCourses([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCoursesAndEnrollments();
-  }, [user?.id]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchCoursesAndEnrollments();
-  };
-
-  const enrollInCourse = async (courseId: string) => {
-    setEnrolling(courseId);
-    try {
-      await CourseService.enrollInCourse(courseId);
-      // Refresh all courses
-      if (user?.id) {
-        const { data: courses, error: coursesError } = await supabase
-          .from('courses')
-          .select(`*, instructor:users!courses_instructor_id_fkey(full_name, email)`);
-        if (coursesError) throw coursesError;
-        const { data: enrollments, error: enrollmentsError } = await supabase
-          .from('student_course_enrollments')
-          .select('course_id, status')
-          .eq('student_id', user.id)
-          .eq('status', 'active');
-        if (enrollmentsError) throw enrollmentsError;
-        const enrolledIds = new Set(enrollments.map(e => e.course_id));
-        const merged = courses.map(course => ({
-          ...course,
-          isEnrolled: enrolledIds.has(course.id),
-        }));
-        setAllCourses(merged);
-      }
-    } catch (e) {
-      alert('Failed to enroll in course.');
-    } finally {
-      setEnrolling(null);
-    }
-  };
+  
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(30));
 
   console.log('CoursesScreen: Rendering with user:', user?.id);
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
     background: '#FFFFFF',
-    card: '#F7F9FC',
+    card: '#FFFFFF',
     text: '#1A1D1F',
     textSecondary: '#6C7072',
-    primary: '#00AEEF',
-    secondary: '#3DDAB4',
-    border: '#E8ECF4',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#FF3B30',
-    inactive: '#C5C6C7',
-    highlight: '#E6F7FE',
+    primary: '#3B82F6',
+    secondary: '#2563EB',
+    border: '#E2E8F0',
+    success: '#10B981',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    inactive: '#9CA3AF',
+    highlight: '#EFF6FF',
   };
 
-  useEffect(() => {
-    console.log('CoursesScreen: useEffect triggered');
+  // Animation on mount
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+  const getCurrentDate = () => {
+    const now = new Date();
+    const options: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    return now.toLocaleDateString('en-US', options);
   };
+
+  // Mock timetable data
+  const timetableData = [
+    {
+      day: 'Monday',
+      classes: [
+        {
+          title: 'Introduction to Computer Science',
+          time: '08:00 - 10:00',
+          location: 'Science Block, Room 201',
+          instructor: 'Dr. James Kimani',
+        },
+        {
+          title: 'Advanced Calculus',
+          time: '10:30 - 12:30',
+          location: 'Mathematics Building, Room 105',
+          instructor: 'Prof. Sarah Odhiambo',
+        },
+      ],
+    },
+    {
+      day: 'Tuesday',
+      classes: [],
+    },
+    {
+      day: 'Wednesday',
+      classes: [
+        {
+          title: 'Database Systems',
+          time: '14:00 - 16:00',
+          location: 'Computer Lab, Room 301',
+          instructor: 'Dr. Michael Ochieng',
+        },
+      ],
+    },
+  ];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
-        }
+        showsVerticalScrollIndicator={false}
       >
-        {/* Welcome Header */}
-        <View style={styles.welcomeHeader}>
-          <View style={styles.welcomeTextContainer}>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              {getGreeting()},
-            </Text>
-            <Text style={[styles.welcomeName, { color: colors.text }]}>
-              {user?.firstName || 'Student'}!
-            </Text>
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.headerLeft}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.logoText}>T</Text>
+            </View>
+            <View style={styles.logoTextContainer}>
+              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
+            </View>
           </View>
-          <TouchableOpacity
-            style={[styles.profileButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
+          <TouchableOpacity style={styles.menuButton}>
+            <Feather name="menu" size={24} color={colors.text} />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
-        {/* All Courses Section */}
-        <View style={[styles.coursesCard, { backgroundColor: colors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="book-open" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              All Courses
-            </Text>
-          </View>
-          {loading ? (
-            <Text style={{ color: colors.textSecondary }}>Loading...</Text>
-          ) : allCourses.length === 0 ? (
-            <Text style={{ color: colors.textSecondary }}>No courses found.</Text>
-          ) : (
-            allCourses.map(course => (
-              <View key={course.id} style={{ marginBottom: 12 }}>
-                <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>{course.name}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{course.code} • {course.instructor?.full_name || 'Unknown Instructor'}</Text>
-                {course.isEnrolled ? (
-                  <Text style={{ color: colors.success, marginTop: 4 }}>Enrolled</Text>
-                ) : (
-                  <TouchableOpacity
-                    style={{ marginTop: 4, alignSelf: 'flex-start', backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
-                    onPress={() => enrollInCourse(course.id)}
-                    disabled={enrolling === course.id}
-                  >
-                    <Text style={{ color: '#FFF' }}>{enrolling === course.id ? 'Enrolling...' : 'Enroll'}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))
-          )}
-        </View>
+        {/* Main Title */}
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={[styles.mainTitle, { color: colors.text }]}>
+            My Timetable
+          </Text>
+          <Text style={[styles.dateText, { color: colors.textSecondary }]}>
+            {getCurrentDate()}
+          </Text>
+        </Animated.View>
+
+        {/* Timetable Cards */}
+        <Animated.View 
+          style={[
+            styles.timetableContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          {timetableData.map((dayData, index) => (
+            <View key={index} style={[styles.dayCard, { backgroundColor: colors.card }]}>
+              <Text style={[styles.dayTitle, { color: colors.primary }]}>
+                {dayData.day}
+              </Text>
+              
+              {dayData.classes.length === 0 ? (
+                <Text style={[styles.noClassesText, { color: colors.textSecondary }]}>
+                  No classes scheduled
+                </Text>
+              ) : (
+                dayData.classes.map((classItem, classIndex) => (
+                  <View key={classIndex} style={styles.classItem}>
+                    <View style={styles.classHeader}>
+                      <Text style={[styles.classTitle, { color: colors.text }]}>
+                        {classItem.title}
+                      </Text>
+                      <Text style={[styles.classTime, { color: colors.textSecondary }]}>
+                        {classItem.time}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.classDetails}>
+                      <View style={styles.detailRow}>
+                        <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                        <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                          {classItem.location}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
+                        <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                          {classItem.instructor}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {classIndex < dayData.classes.length - 1 && (
+                      <View style={[styles.separator, { backgroundColor: colors.border }]} />
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
+          ))}
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -194,103 +214,114 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  welcomeHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  welcomeTextContainer: {
-    flex: 1,
-  },
-  greeting: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  welcomeName: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  coursesCard: {
-    padding: 24,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  sectionHeader: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
-  sectionTitle: {
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  logoText: {
+    color: '#FFFFFF',
     fontSize: 20,
-    fontWeight: '700',
-    marginLeft: 12,
+    fontWeight: 'bold',
   },
-  coursesMessage: {
-    fontSize: 16,
-    lineHeight: 22,
+  logoTextContainer: {
+    alignItems: 'flex-start',
   },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 12,
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
   },
-  actionButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionText: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
+  logoSubtitle: {
+    fontSize: 14,
     fontWeight: '500',
   },
-  testCard: {
+  menuButton: {
+    padding: 8,
+  },
+  titleContainer: {
+    marginBottom: 32,
+  },
+  mainTitle: {
+    fontSize: screenWidth > 400 ? 32 : 28,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  timetableContainer: {
+    gap: 16,
+  },
+  dayCard: {
+    borderRadius: 16,
     padding: 20,
-    borderRadius: 16,
-    marginBottom: 24,
-    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  testTitle: {
+  dayTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontWeight: '600',
+    marginBottom: 16,
   },
-  testText: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  comingSoonCard: {
-    padding: 24,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  comingSoonTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  comingSoonMessage: {
+  noClassesText: {
     fontSize: 16,
     textAlign: 'center',
-    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  classItem: {
+    marginBottom: 16,
+  },
+  classHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  classTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 12,
+  },
+  classTime: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  classDetails: {
+    gap: 4,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailText: {
+    fontSize: 14,
+  },
+  separator: {
+    height: 1,
+    marginTop: 16,
   },
 }); 

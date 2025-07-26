@@ -1,13 +1,15 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
 import { BeaconStatus } from '@/components/BeaconStatus';
 import { AttendanceStats } from '@/components/AttendanceStats';
 import { useBeacon } from '@/hooks/useBeacon';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
@@ -15,24 +17,44 @@ export default function HomeScreen() {
   const { fetchAttendanceRecords } = useAttendanceStore();
   const { isScanning, currentSession, attendanceMarked, isConnected } = useBeacon();
   const router = useRouter();
+  
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(30));
+  const [expandedCard, setExpandedCard] = useState<number | null>(null);
 
   console.log('HomeScreen: Rendering with user:', user?.id);
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
     background: '#FFFFFF',
-    card: '#F7F9FC',
+    card: '#FFFFFF',
     text: '#1A1D1F',
     textSecondary: '#6C7072',
-    primary: '#00AEEF',
-    secondary: '#3DDAB4',
-    border: '#E8ECF4',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#FF3B30',
-    inactive: '#C5C6C7',
-    highlight: '#E6F7FE',
+    primary: '#3B82F6',
+    secondary: '#2563EB',
+    border: '#E2E8F0',
+    success: '#10B981',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    inactive: '#9CA3AF',
+    highlight: '#EFF6FF',
   };
+
+  // Animation on mount
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   useEffect(() => {
     console.log('HomeScreen: useEffect triggered with user:', user?.id);
@@ -57,11 +79,15 @@ export default function HomeScreen() {
     }
   }, [user]);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+  const getCurrentDate = () => {
+    const now = new Date();
+    const options: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    return now.toLocaleDateString('en-US', options);
   };
 
   const handleQuickAction = (action: string) => {
@@ -75,76 +101,173 @@ export default function HomeScreen() {
       case 'history':
         router.push('/(tabs)/history');
         break;
-      case 'settings':
-        router.push('/(tabs)/settings');
+      default:
         break;
     }
   };
 
+  const toggleCardExpansion = (index: number) => {
+    setExpandedCard(expandedCard === index ? null : index);
+  };
+
+  // Mock data for today's classes
+  const todaysClasses = [
+    {
+      id: 1,
+      title: "Introduction to Computer Science",
+      code: "CS 101",
+      time: "08:00 - 10:00",
+      location: "Science Block, Room 201",
+      lecturer: "Dr. James Kimani",
+      day: "Monday",
+      isExpanded: expandedCard === 0,
+    },
+    {
+      id: 2,
+      title: "Advanced Calculus",
+      code: "MATH 202",
+      time: "10:30 - 12:30",
+      location: "Mathematics Building, Room 105",
+      lecturer: "Prof. Sarah Odhiambo",
+      day: "Monday",
+      isExpanded: expandedCard === 1,
+    },
+    {
+      id: 3,
+      title: "Literary Theory",
+      code: "ENG 303",
+      time: "14:00 - 16:00",
+      location: "Arts Block, Room A12",
+      lecturer: "Dr. Michael Ochieng",
+      day: "Monday",
+      isExpanded: expandedCard === 2,
+    },
+  ];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Welcome Header */}
-        <View style={styles.welcomeHeader}>
-          <View style={styles.welcomeTextContainer}>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              {getGreeting()},
-            </Text>
-            <Text style={[styles.welcomeName, { color: colors.text }]}>
-              {user?.firstName || 'Student'}!
-            </Text>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.headerLeft}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.logoText}>T</Text>
+            </View>
+            <View style={styles.logoTextContainer}>
+              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
+            </View>
           </View>
-          <TouchableOpacity 
-            style={[styles.profileButton, { backgroundColor: colors.card }]}
-            onPress={() => handleQuickAction('settings')}
-          >
-            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
+          <TouchableOpacity style={styles.menuButton}>
+            <Feather name="menu" size={24} color={colors.text} />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
-        {/* Beacon Status */}
-        <BeaconStatus />
-
-        {/* Attendance Stats */}
-        <AttendanceStats />
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => handleQuickAction('scan')}
-          >
-            <Ionicons name="qr-code" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Scan QR Code</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => handleQuickAction('courses')}
-          >
-            <Ionicons name="book" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>View Courses</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.card }]}
-            onPress={() => handleQuickAction('history')}
-          >
-            <Ionicons name="time" size={24} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Attendance History</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Welcome Message */}
-        <View style={[styles.welcomeCard, { backgroundColor: colors.card }]}>
-          <MaterialCommunityIcons name="school" size={32} color={colors.primary} />
-          <Text style={[styles.welcomeTitle, { color: colors.text }]}>
-            Welcome to Daystar University
+        {/* Main Title */}
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={[styles.mainTitle, { color: colors.text }]}>
+            Attendance Check
           </Text>
-          <Text style={[styles.welcomeMessage, { color: colors.textSecondary }]}>
-            Use the QR code scanner to record your attendance when your instructor displays a QR code.
+          <Text style={[styles.dateText, { color: colors.textSecondary }]}>
+            {getCurrentDate()}
           </Text>
-        </View>
+        </Animated.View>
+
+        {/* Today's Classes Section */}
+        <Animated.View 
+          style={[
+            styles.classesSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Today's Classes
+          </Text>
+          
+          {todaysClasses.map((classItem, index) => (
+            <View key={classItem.id} style={[styles.classCard, { backgroundColor: colors.card }]}>
+              <TouchableOpacity 
+                style={styles.classHeader}
+                onPress={() => toggleCardExpansion(index)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.classInfo}>
+                  <Text style={[styles.classTitle, { color: colors.text }]}>
+                    {classItem.title}
+                  </Text>
+                  <View style={[styles.classCode, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.classCodeText}>{classItem.code}</Text>
+                  </View>
+                </View>
+                <Ionicons 
+                  name={classItem.isExpanded ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={colors.textSecondary} 
+                />
+              </TouchableOpacity>
+              
+              <View style={styles.classDetails}>
+                <View style={styles.detailRow}>
+                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                  <Text style={[styles.detailText, { color: colors.text }]}>{classItem.time}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
+                  <Text style={[styles.detailText, { color: colors.text }]}>{classItem.location}</Text>
+                </View>
+                {classItem.isExpanded && (
+                  <>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="person-outline" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailText, { color: colors.text }]}>Lecturer: {classItem.lecturer}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailText, { color: colors.text }]}>Day: {classItem.day}</Text>
+                    </View>
+                    
+                    {/* Action Buttons */}
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity style={[styles.actionButton, { borderColor: colors.border }]}>
+                        <Text style={[styles.actionButtonText, { color: colors.text }]}>Check In</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.actionButton, { borderColor: colors.border }]}>
+                        <Text style={[styles.actionButtonText, { color: colors.text }]}>Check Out</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.actionButton, { borderColor: colors.border }]}>
+                        <MaterialCommunityIcons name="qrcode-scan" size={16} color={colors.textSecondary} />
+                        <Text style={[styles.actionButtonText, { color: colors.text }]}>Scan QR</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          ))}
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -158,105 +281,136 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  welcomeHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  welcomeTextContainer: {
-    flex: 1,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  greeting: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  welcomeName: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
-  quickActions: {
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  logoTextContainer: {
+    alignItems: 'flex-start',
+  },
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  logoSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  menuButton: {
+    padding: 8,
+  },
+  titleContainer: {
+    marginBottom: 32,
+  },
+  mainTitle: {
+    fontSize: screenWidth > 400 ? 32 : 28,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  classesSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  classCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  classHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  classInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  classTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 12,
+  },
+  classCode: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  classCodeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  classDetails: {
     gap: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
   },
   actionButton: {
     flex: 1,
-    padding: 16,
-    borderRadius: 12,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
   },
-  actionText: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
+  actionButtonText: {
+    fontSize: 14,
     fontWeight: '500',
-  },
-  sessionCard: {
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sessionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 12,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  sessionText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  welcomeCard: {
-    padding: 24,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  welcomeTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  welcomeMessage: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  successCard: {
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  successTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 12,
-    marginBottom: 8,
-    textAlign: 'center',
-    color: '#FFFFFF',
-  },
-  successMessage: {
-    fontSize: 14,
-    textAlign: 'center',
-    color: '#FFFFFF',
-    opacity: 0.9,
   },
 }); 

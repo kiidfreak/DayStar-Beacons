@@ -1,165 +1,375 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
+import { useAttendanceStore } from '@/store/attendanceStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { AttendanceService } from '@/services/attendanceService';
+import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HistoryScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
+  const { fetchAttendanceRecords } = useAttendanceStore();
   const router = useRouter();
-  const [records, setRecords] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [analytics, setAnalytics] = useState<{ total: number; present: number; absent: number }>({ total: 0, present: 0, absent: 0 });
-  const [refreshing, setRefreshing] = useState(false);
-
-  const fetchAttendance = async () => {
-    if (user?.id) {
-      setRefreshing(true);
-      try {
-        const data = await AttendanceService.getStudentAttendance(user.id);
-        setRecords(data);
-        // Calculate analytics
-        const present = data.filter(r => r.status === 'present').length;
-        // Fetch all past sessions for the user
-        const pastSessions = await AttendanceService.getPastSessionsForUser(user.id);
-        // Build a set of session IDs the user attended
-        const attendedSessionIds = new Set(data.map(r => r.session_id));
-        // Count absents: sessions with no attendance record
-        const absent = pastSessions.filter(session => !attendedSessionIds.has(session.id)).length;
-        const total = present + absent;
-        setAnalytics({ total, present, absent });
-      } catch {
-        setRecords([]);
-      } finally {
-        setRefreshing(false);
-        setLoading(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    fetchAttendance();
-  }, [user?.id]);
-
-  const onRefresh = () => {
-    fetchAttendance();
-  };
+  
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(30));
+  const [activeTab, setActiveTab] = useState<'overview' | 'courseDetails'>('overview');
 
   console.log('HistoryScreen: Rendering with user:', user?.id);
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
     background: '#FFFFFF',
-    card: '#F7F9FC',
+    card: '#FFFFFF',
     text: '#1A1D1F',
     textSecondary: '#6C7072',
-    primary: '#00AEEF',
-    secondary: '#3DDAB4',
-    border: '#E8ECF4',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#FF3B30',
-    inactive: '#C5C6C7',
-    highlight: '#E6F7FE',
+    primary: '#3B82F6',
+    secondary: '#2563EB',
+    border: '#E2E8F0',
+    success: '#10B981',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    inactive: '#9CA3AF',
+    highlight: '#EFF6FF',
   };
 
-  useEffect(() => {
-    console.log('HistoryScreen: useEffect triggered');
+  // Animation on mount
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+  useEffect(() => {
+    console.log('HistoryScreen: useEffect triggered with user:', user?.id);
+    if (user) {
+      console.log('HistoryScreen: Fetching attendance records for user:', user.id);
+      fetchAttendanceRecords();
+    }
+  }, [user, fetchAttendanceRecords]);
+
+  const getPerformanceCategory = (percentage: number) => {
+    if (percentage >= 90) return { label: 'excellent', color: colors.success };
+    if (percentage >= 75) return { label: 'good', color: colors.warning };
+    return { label: 'at risk', color: colors.error };
   };
+
+  const getOverallAttendance = () => {
+    return 80; // Mock overall attendance percentage
+  };
+
+  // Mock course data
+  const courseData = [
+    {
+      id: 1,
+      name: "Data Structures & Algorithms",
+      code: "CS 201",
+      attendance: 22,
+      total: 24,
+      percentage: 92,
+    },
+    {
+      id: 2,
+      name: "Database Systems",
+      code: "CS 301",
+      attendance: 16,
+      total: 20,
+      percentage: 80,
+    },
+  ];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
-        }
+        showsVerticalScrollIndicator={false}
       >
-        {/* Welcome Header */}
-        <View style={styles.welcomeHeader}>
-          <View style={styles.welcomeTextContainer}>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              {getGreeting()},
-            </Text>
-            <Text style={[styles.welcomeName, { color: colors.text }]}>
-              {user?.firstName || 'Student'}!
-            </Text>
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.headerLeft}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.logoText}>T</Text>
+            </View>
+            <View style={styles.logoTextContainer}>
+              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
+            </View>
           </View>
-          <TouchableOpacity
-            style={[styles.profileButton, { backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <MaterialCommunityIcons name="account" size={24} color={colors.primary} />
+          <TouchableOpacity style={styles.menuButton}>
+            <Feather name="menu" size={24} color={colors.text} />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
-        {/* Attendance Analytics */}
-        <View style={[styles.historyCard, { backgroundColor: colors.card, marginBottom: 12 }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="chart-bar" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Attendance Analytics
-            </Text>
-          </View>
-          <Text style={{ color: colors.textSecondary }}>Total Records: {analytics.total}</Text>
-          <Text style={{ color: colors.success }}>Present: {analytics.present}</Text>
-          <Text style={{ color: colors.error }}>Absent: {analytics.absent}</Text>
-        </View>
+        {/* Main Title */}
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={[styles.mainTitle, { color: colors.text }]}>
+            Attendance History
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Track your class attendance performance
+          </Text>
+        </Animated.View>
 
-        {/* History Section */}
-        <View style={[styles.historyCard, { backgroundColor: colors.card }]}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="history" size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Attendance History
+        {/* Navigation Tabs */}
+        <Animated.View 
+          style={[
+            styles.tabsContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              activeTab === 'overview' && { backgroundColor: colors.primary }
+            ]}
+            onPress={() => setActiveTab('overview')}
+          >
+            <Text style={[
+              styles.tabText, 
+              { color: activeTab === 'overview' ? '#FFFFFF' : colors.text }
+            ]}>
+              Overview
             </Text>
-          </View>
-          {loading ? (
-            <Text style={{ color: colors.textSecondary }}>Loading...</Text>
-          ) : records.length === 0 ? (
-            <Text style={{ color: colors.textSecondary }}>No attendance records found.</Text>
-          ) : (
-            records.map(record => {
-              const isOpen = expanded === record.id;
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              activeTab === 'courseDetails' && { backgroundColor: colors.primary }
+            ]}
+            onPress={() => setActiveTab('courseDetails')}
+          >
+            <Text style={[
+              styles.tabText, 
+              { color: activeTab === 'courseDetails' ? '#FFFFFF' : colors.text }
+            ]}>
+              Course Details
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Content based on active tab */}
+        {activeTab === 'overview' ? (
+          <Animated.View 
+            style={[
+              styles.contentContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
+            {/* Overall Performance Card */}
+            <View style={[styles.performanceCard, { backgroundColor: colors.card }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="trending-up" size={20} color={colors.primary} />
+                <Text style={[styles.cardTitle, { color: colors.text }]}>
+                  Overall Performance
+                </Text>
+              </View>
+              <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
+                Your attendance across all enrolled courses
+              </Text>
+              
+              <View style={styles.attendanceDisplay}>
+                <Text style={[styles.attendanceLabel, { color: colors.text }]}>
+                  Overall Attendance
+                </Text>
+                <Text style={[styles.attendancePercentage, { color: colors.primary }]}>
+                  {getOverallAttendance()}%
+                </Text>
+              </View>
+              
+              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { 
+                      backgroundColor: colors.primary,
+                      width: `${getOverallAttendance()}%`
+                    }
+                  ]} 
+                />
+              </View>
+              
+              <View style={styles.legendContainer}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                  <Text style={[styles.legendText, { color: colors.success }]}>
+                    Excellent: 90%+ attendance
+                  </Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+                  <Text style={[styles.legendText, { color: colors.warning }]}>
+                    Good: 75-89% attendance
+                  </Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
+                  <Text style={[styles.legendText, { color: colors.error }]}>
+                    At Risk: Below 75%
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Course Performance Cards */}
+            {courseData.map((course) => {
+              const performance = getPerformanceCategory(course.percentage);
               return (
-                <View key={record.id} style={{ marginBottom: 12 }}>
-                  <TouchableOpacity onPress={() => setExpanded(isOpen ? null : record.id)}>
-                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>
-                      {record.courseName || record.courseCode}
-                      {record.courseCode && record.courseName && (
-                        <Text style={{ color: colors.textSecondary, fontSize: 13 }}> ({record.courseCode})</Text>
-                      )}
+                <View key={course.id} style={[styles.courseCard, { backgroundColor: colors.card }]}>
+                  <View style={styles.courseHeader}>
+                    <Text style={[styles.courseTitle, { color: colors.text }]}>
+                      {course.name}
                     </Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{record.date} • {record.status}</Text>
-                  </TouchableOpacity>
-                  {isOpen && (
-                    <View style={{ marginTop: 6, paddingLeft: 8 }}>
-                      {record.checkInTime && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Check-in: {new Date(record.checkInTime).toLocaleTimeString()}</Text>}
-                      {record.checkOutTime && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Check-out: {new Date(record.checkOutTime).toLocaleTimeString()}</Text>}
-                      {record.method && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Method: {record.method}</Text>}
-                      {(record.latitude && record.longitude) && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Location: {record.latitude}, {record.longitude}</Text>}
-                      {record.verifiedBy && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Verified By: {record.verifiedBy}</Text>}
-                      {record.verifiedAt && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Verified At: {new Date(record.verifiedAt).toLocaleString()}</Text>}
-                      {record.location && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Session Location: {record.location}</Text>}
+                    <View style={[styles.performanceBadge, { backgroundColor: colors.highlight }]}>
+                      <View style={[styles.badgeDot, { backgroundColor: colors.primary }]} />
+                      <Text style={[styles.badgeText, { color: colors.primary }]}>
+                        {course.percentage}% • {performance.label}
+                      </Text>
                     </View>
-                  )}
+                  </View>
+                  
+                  <Text style={[styles.courseCode, { color: colors.textSecondary }]}>
+                    {course.code}
+                  </Text>
+                  
+                  <View style={styles.courseStats}>
+                    <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
+                      {course.attendance}/{course.total} classes attended
+                    </Text>
+                    <Text style={[styles.coursePercentage, { color: colors.text }]}>
+                      {course.percentage}%
+                    </Text>
+                  </View>
+                  
+                  <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                    <View 
+                      style={[
+                        styles.progressFill, 
+                        { 
+                          backgroundColor: colors.primary,
+                          width: `${course.percentage}%`
+                        }
+                      ]} 
+                    />
+                  </View>
                 </View>
               );
-            })
-          )}
-        </View>
+            })}
+          </Animated.View>
+        ) : (
+          <Animated.View 
+            style={[
+              styles.contentContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
+            {/* Course Details Content */}
+            {courseData.map((course) => (
+              <View key={course.id} style={[styles.courseCard, { backgroundColor: colors.card }]}>
+                <View style={styles.courseHeader}>
+                  <Text style={[styles.courseTitle, { color: colors.text }]}>
+                    {course.name}
+                  </Text>
+                  <View style={[styles.performanceBadge, { backgroundColor: colors.highlight }]}>
+                    <View style={[styles.badgeDot, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.badgeText, { color: colors.primary }]}>
+                      {course.percentage}% • {getPerformanceCategory(course.percentage).label}
+                    </Text>
+                  </View>
+                </View>
+                
+                <Text style={[styles.courseCode, { color: colors.textSecondary }]}>
+                  {course.code}
+                </Text>
+                
+                <View style={styles.courseStats}>
+                  <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
+                    {course.attendance} Attended
+                  </Text>
+                  <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
+                    {course.total - course.attendance} Missed
+                  </Text>
+                </View>
+                
+                <View style={styles.recentClasses}>
+                  <View style={styles.recentHeader}>
+                    <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                    <Text style={[styles.recentTitle, { color: colors.text }]}>
+                      Recent Classes
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.recentClassItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={[styles.recentClassName, { color: colors.text }]}>
+                      Binary Trees
+                    </Text>
+                    <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
+                      2024-01-15
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.recentClassItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={[styles.recentClassName, { color: colors.text }]}>
+                      Linked Lists
+                    </Text>
+                    <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
+                      2024-01-12
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.recentClassItem}>
+                    <Ionicons name="close-circle" size={16} color={colors.error} />
+                    <Text style={[styles.recentClassName, { color: colors.text }]}>
+                      Arrays & Strings
+                    </Text>
+                    <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
+                      2024-01-10
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </Animated.View>
+        )}
       </ScrollView>
     </View>
   );
@@ -173,86 +383,224 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  welcomeHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  welcomeTextContainer: {
-    flex: 1,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  greeting: {
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  logoTextContainer: {
+    alignItems: 'flex-start',
+  },
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  logoSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  menuButton: {
+    padding: 8,
+  },
+  titleContainer: {
+    marginBottom: 32,
+  },
+  mainTitle: {
+    fontSize: screenWidth > 400 ? 32 : 28,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  subtitle: {
     fontSize: 16,
-    marginBottom: 4,
+    fontWeight: '500',
   },
-  welcomeName: {
+  tabsContainer: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    gap: 8,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  contentContainer: {
+    gap: 16,
+  },
+  performanceCard: {
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  attendanceDisplay: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  attendanceLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  attendancePercentage: {
     fontSize: 24,
     fontWeight: '700',
   },
-  profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  historyCard: {
-    padding: 24,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
     marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginLeft: 12,
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
   },
-  historyMessage: {
-    fontSize: 16,
-    lineHeight: 22,
+  legendContainer: {
+    gap: 8,
   },
-  quickActions: {
+  legendItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
   },
-  actionText: {
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
     fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
     fontWeight: '500',
   },
-  comingSoonCard: {
-    padding: 24,
+  courseCard: {
     borderRadius: 16,
-    alignItems: 'center',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  comingSoonTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 16,
+  courseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 8,
-    textAlign: 'center',
   },
-  comingSoonMessage: {
+  courseTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 12,
+  },
+  performanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  badgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  courseCode: {
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  courseStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  courseStatsText: {
+    fontSize: 14,
+  },
+  coursePercentage: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  recentClasses: {
+    marginTop: 16,
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  recentTitle: {
     fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
+    fontWeight: '600',
+  },
+  recentClassItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  recentClassName: {
+    fontSize: 14,
+    flex: 1,
+    marginLeft: 8,
+  },
+  recentClassDate: {
+    fontSize: 12,
   },
 });

@@ -9,12 +9,13 @@ import {
   Alert, 
   KeyboardAvoidingView, 
   Platform,
-  Dimensions 
+  Dimensions,
+  Animated 
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Logo from '@/components/ui/Logo';
@@ -26,6 +27,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(50));
   
   const { themeColors } = useThemeStore();
   const { login } = useAuthStore();
@@ -34,18 +37,34 @@ export default function LoginScreen() {
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
     background: '#FFFFFF',
-    card: '#F7F9FC',
+    card: '#FFFFFF',
     text: '#1A1D1F',
     textSecondary: '#6C7072',
-    primary: '#00AEEF',
-    secondary: '#3DDAB4',
-    border: '#E8ECF4',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#FF3B30',
-    inactive: '#C5C6C7',
-    highlight: '#E6F7FE',
+    primary: '#3B82F6',
+    secondary: '#2563EB',
+    border: '#E2E8F0',
+    success: '#10B981',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    inactive: '#9CA3AF',
+    highlight: '#EFF6FF',
   };
+
+  // Animation on mount
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -100,35 +119,79 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Logo size="large" />
+        {/* Back Button */}
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {/* Header with Logo */}
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={styles.logoContainer}>
+            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.logoText}>T</Text>
+            </View>
+            <View style={styles.logoTextContainer}>
+              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Main Title */}
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
           <Text style={[styles.title, { color: colors.text }]}>
-            Welcome Back
+            Daystar University
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Sign in to your university account
+            Student Login
           </Text>
-        </View>
+        </Animated.View>
 
         {/* Login Form */}
-        <Card elevated style={[styles.formCard, { backgroundColor: colors.card }] as any}>
-          <View style={styles.form}>
-            {/* Email Input */}
+        <Animated.View 
+          style={[
+            styles.formContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <View style={[styles.formCard, { backgroundColor: colors.card }]}>
+            {/* Student ID Input */}
             <View style={styles.inputContainer}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>
-                Email Address
+                Student ID
               </Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.background }]}>
+              <View style={[styles.inputWrapper, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <MaterialCommunityIcons 
-                  name="email-outline" 
+                  name="account-outline" 
                   size={20} 
                   color={colors.textSecondary} 
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={[styles.textInput, { color: colors.text }]}
-                  placeholder="Enter your email"
+                  placeholder="Enter your student ID"
                   placeholderTextColor={colors.textSecondary}
                   value={email}
                   onChangeText={setEmail}
@@ -144,7 +207,7 @@ export default function LoginScreen() {
               <Text style={[styles.inputLabel, { color: colors.text }]}>
                 Password
               </Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.background }]}>
+              <View style={[styles.inputWrapper, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <MaterialCommunityIcons 
                   name="lock-outline" 
                   size={20} 
@@ -174,46 +237,67 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* Forgot Password */}
-            <TouchableOpacity 
-              style={styles.forgotPassword}
-              onPress={handleForgotPassword}
-            >
-              <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
-                Forgot Password?
-              </Text>
-            </TouchableOpacity>
+            {/* Terms and Conditions */}
+            <View style={styles.termsContainer}>
+              <TouchableOpacity style={styles.checkboxContainer}>
+                <View style={[styles.checkbox, { borderColor: colors.primary }]}>
+                  <View style={[styles.checkboxInner, { backgroundColor: colors.primary }]} />
+                </View>
+                <Text style={[styles.termsText, { color: colors.text }]}>
+                  I agree to the terms and conditions
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Login Button */}
-            <Button
-              title={isLoading ? "Signing In..." : "Sign In"}
+            <TouchableOpacity
+              style={[styles.loginButton, { backgroundColor: colors.primary }]}
               onPress={handleLogin}
               disabled={isLoading}
-              style={styles.loginButton}
-            />
-          </View>
-        </Card>
-
-        {/* Sign Up Link */}
-        <View style={styles.signupContainer}>
-          <Text style={[styles.signupText, { color: colors.textSecondary }]}>
-            Don't have an account?{' '}
-          </Text>
-          <Link href="/(auth)/register" asChild>
-            <TouchableOpacity>
-              <Text style={[styles.signupLink, { color: colors.primary }]}>
-                Sign Up
-              </Text>
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <Text style={styles.loginButtonText}>Signing In...</Text>
+              ) : (
+                <Text style={styles.loginButtonText}>Login</Text>
+              )}
             </TouchableOpacity>
-          </Link>
-        </View>
+          </View>
+        </Animated.View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-            Secure attendance tracking for universities
-          </Text>
-        </View>
+        {/* Additional Links */}
+        <Animated.View 
+          style={[
+            styles.linksContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            style={styles.linkItem}
+            onPress={handleForgotPassword}
+          >
+            <Text style={[styles.linkText, { color: colors.textSecondary }]}>
+              Forgot your password?{' '}
+            </Text>
+            <Text style={[styles.linkHighlight, { color: colors.primary }]}>
+              Reset it here
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.linkItem}>
+            <Text style={[styles.linkText, { color: colors.textSecondary }]}>
+              Don't have an account?{' '}
+            </Text>
+            <Link href="/(auth)/register" asChild>
+              <Text style={[styles.linkHighlight, { color: colors.primary }]}>
+                Sign up
+              </Text>
+            </Link>
+          </TouchableOpacity>
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -226,39 +310,86 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: screenHeight * 0.1,
+    paddingTop: screenHeight * 0.05,
     paddingBottom: 40,
   },
+  backButton: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    zIndex: 10,
+    padding: 8,
+  },
   header: {
+    alignItems: 'center',
+    marginBottom: 40,
+    marginTop: 60,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  logoCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  logoTextContainer: {
+    alignItems: 'flex-start',
+  },
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  logoSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  titleContainer: {
     alignItems: 'center',
     marginBottom: 40,
   },
   title: {
     fontSize: screenWidth > 400 ? 32 : 28,
     fontWeight: '700',
-    marginTop: 24,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     textAlign: 'center',
     lineHeight: 22,
+    fontWeight: '500',
+  },
+  formContainer: {
+    marginBottom: 24,
   },
   formCard: {
     padding: 24,
     borderRadius: 16,
-    marginBottom: 24,
-  },
-  form: {
-    gap: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   inputContainer: {
-    gap: 8,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
+    marginBottom: 8,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -267,7 +398,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    minHeight: Platform.OS === 'ios' ? 44 : 48,
   },
   inputIcon: {
     marginRight: 12,
@@ -279,36 +410,65 @@ const styles = StyleSheet.create({
   passwordToggle: {
     padding: 4,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    paddingVertical: 8,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  loginButton: {
-    marginTop: 8,
-  },
-  signupContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  termsContainer: {
     marginBottom: 24,
   },
-  signupText: {
-    fontSize: 16,
-  },
-  signupLink: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
+  checkboxContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  footerText: {
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  termsText: {
     fontSize: 14,
+    flex: 1,
+  },
+  loginButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: Platform.OS === 'ios' ? 44 : 48,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
-    opacity: 0.7,
+  },
+  linksContainer: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  linkItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkText: {
+    fontSize: 14,
+  },
+  linkHighlight: {
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
