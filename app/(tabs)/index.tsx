@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { BeaconStatus } from '@/components/BeaconStatus';
 import { AttendanceStats } from '@/components/AttendanceStats';
 import { useBeacon } from '@/hooks/useBeacon';
@@ -151,29 +151,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <Animated.View 
-          style={[
-            styles.header,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <View style={styles.headerLeft}>
-            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
-              <Text style={styles.logoText}>T</Text>
-            </View>
-            <View style={styles.logoTextContainer}>
-              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
-              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.menuButton}>
-            <Feather name="menu" size={24} color={colors.text} />
-          </TouchableOpacity>
-        </Animated.View>
+
 
         {/* Main Title */}
         <Animated.View 
@@ -218,15 +196,17 @@ export default function HomeScreen() {
                   <Text style={[styles.classTitle, { color: colors.text }]}>
                     {classItem.title}
                   </Text>
+                </View>
+                <View style={styles.classHeaderRight}>
                   <View style={[styles.classCode, { backgroundColor: colors.primary }]}>
                     <Text style={styles.classCodeText}>{classItem.code}</Text>
                   </View>
+                  <Ionicons 
+                    name={classItem.isExpanded ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color={colors.textSecondary} 
+                  />
                 </View>
-                <Ionicons 
-                  name={classItem.isExpanded ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color={colors.textSecondary} 
-                />
               </TouchableOpacity>
               
               <View style={styles.classDetails}>
@@ -285,44 +265,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 40,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  logoTextContainer: {
-    alignItems: 'flex-start',
-  },
-  logoTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  logoSubtitle: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  menuButton: {
-    padding: 8,
-  },
+
   titleContainer: {
     marginBottom: 32,
   },
@@ -363,13 +306,17 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   classTitle: {
     fontSize: 18,
     fontWeight: '600',
     flex: 1,
     marginRight: 12,
+  },
+  classHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   classCode: {
     paddingHorizontal: 12,
@@ -395,7 +342,7 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     marginTop: 16,
   },
   actionButton: {
@@ -403,11 +350,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
-    gap: 6,
+    gap: 4,
   },
   actionButtonText: {
     fontSize: 14,

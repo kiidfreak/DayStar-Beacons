@@ -83,29 +83,7 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <Animated.View 
-          style={[
-            styles.header,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <View style={styles.headerLeft}>
-            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
-              <Text style={styles.logoText}>T</Text>
-            </View>
-            <View style={styles.logoTextContainer}>
-              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
-              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.menuButton}>
-            <Feather name="menu" size={24} color={colors.text} />
-          </TouchableOpacity>
-        </Animated.View>
+        
 
         {/* Main Title */}
         <Animated.View 

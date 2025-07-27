@@ -50,6 +50,15 @@ export default function TabsLayout() {
     ]).start();
   }, []);
 
+  // Handle sidebar animation
+  React.useEffect(() => {
+    Animated.timing(slideAnim, {
+      toValue: sidebarOpen ? 0 : -300,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [sidebarOpen]);
+
   // Simple check: if no user, just show loading
   if (!user || !user.id) {
     console.log('TabsLayout - no user, showing loading');
@@ -83,7 +92,7 @@ export default function TabsLayout() {
   ];
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row' }}>
+    <View style={{ flex: 1 }}>
       {/* Sidebar */}
       <Animated.View 
         style={[
@@ -144,7 +153,7 @@ export default function TabsLayout() {
       </Animated.View>
 
       {/* Main Content */}
-      <View style={[styles.mainContent, { backgroundColor: safeThemeColors.background }]}>
+      <View style={[styles.mainContent, { backgroundColor: safeThemeColors.background, flex: 1 }]}>
         {/* Top Header */}
         <View style={[styles.topHeader, { backgroundColor: safeThemeColors.card }]}>
           <TouchableOpacity 
@@ -213,6 +222,9 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   sidebar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
     width: 280,
     height: '100%',
     paddingTop: 60,
@@ -263,6 +275,7 @@ const styles = StyleSheet.create({
   },
   mainContent: {
     flex: 1,
+    width: '100%',
   },
   topHeader: {
     flexDirection: 'row',
