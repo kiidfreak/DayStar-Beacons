@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+import { AttendanceService } from '@/services/attendanceService';
+import { ClassSession } from '@/types';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -14,6 +16,8 @@ export default function CoursesScreen() {
   
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
+  const [timetableData, setTimetableData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
   console.log('CoursesScreen: Rendering with user:', user?.id);
 
@@ -49,6 +53,60 @@ export default function CoursesScreen() {
     ]).start();
   }, []);
 
+  // Fetch course timetable data
+  const fetchTimetableData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      // Get sessions for the next 7 days
+      const today = new Date();
+      const sessionsPromises = [];
+      
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        sessionsPromises.push(AttendanceService.getSessionsForDate(user.id, date));
+      }
+      
+      const sessionsArrays = await Promise.all(sessionsPromises);
+      
+      // Group sessions by day
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const timetable = dayNames.map((dayName, index) => {
+        const daySessions = sessionsArrays[index] || [];
+        return {
+          day: dayName,
+          classes: daySessions.map((session: ClassSession) => ({
+            id: session.id,
+            title: session.course?.name || 'Unknown Course',
+            code: session.course?.code || 'N/A',
+            time: formatSessionTime(session.startTime, session.endTime),
+            location: session.location || 'Location TBD',
+            instructor: session.course?.instructor?.name || 'TBD',
+            sessionDate: session.sessionDate,
+            startTime: session.startTime,
+            endTime: session.endTime,
+          }))
+        };
+      });
+      
+      setTimetableData(timetable);
+    } catch (error) {
+      console.error('Error fetching timetable data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    console.log('CoursesScreen: useEffect triggered with user:', user?.id);
+    if (user) {
+      console.log('CoursesScreen: Fetching timetable data for user:', user.id);
+      fetchTimetableData();
+    }
+  }, [user]);
+
   const getCurrentDate = () => {
     const now = new Date();
     const options: Intl.DateTimeFormatOptions = { 
@@ -60,41 +118,26 @@ export default function CoursesScreen() {
     return now.toLocaleDateString('en-US', options);
   };
 
-  // Mock timetable data
-  const timetableData = [
-    {
-      day: 'Monday',
-      classes: [
-        {
-          title: 'Introduction to Computer Science',
-          time: '08:00 - 10:00',
-          location: 'Science Block, Room 201',
-          instructor: 'Dr. James Kimani',
-        },
-        {
-          title: 'Advanced Calculus',
-          time: '10:30 - 12:30',
-          location: 'Mathematics Building, Room 105',
-          instructor: 'Prof. Sarah Odhiambo',
-        },
-      ],
-    },
-    {
-      day: 'Tuesday',
-      classes: [],
-    },
-    {
-      day: 'Wednesday',
-      classes: [
-        {
-          title: 'Database Systems',
-          time: '14:00 - 16:00',
-          location: 'Computer Lab, Room 301',
-          instructor: 'Dr. Michael Ochieng',
-        },
-      ],
-    },
-  ];
+  // Format session time range
+  const formatSessionTime = (startTime: string, endTime: string) => {
+    if (!startTime || !endTime) return 'TBD';
+    
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    
+    const startFormatted = start.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    const endFormatted = end.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    
+    return `${startFormatted} - ${endFormatted}`;
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -133,51 +176,71 @@ export default function CoursesScreen() {
             }
           ]}
         >
-          {timetableData.map((dayData, index) => (
-            <View key={index} style={[styles.dayCard, { backgroundColor: colors.card }]}>
-              <Text style={[styles.dayTitle, { color: colors.primary }]}>
-                {dayData.day}
+          {loading ? (
+            <View style={[styles.loadingContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                Loading timetable...
               </Text>
-              
-              {dayData.classes.length === 0 ? (
-                <Text style={[styles.noClassesText, { color: colors.textSecondary }]}>
-                  No classes scheduled
-                </Text>
-              ) : (
-                dayData.classes.map((classItem, classIndex) => (
-                  <View key={classIndex} style={styles.classItem}>
-                    <View style={styles.classHeader}>
-                      <Text style={[styles.classTitle, { color: colors.text }]}>
-                        {classItem.title}
-                      </Text>
-                      <Text style={[styles.classTime, { color: colors.textSecondary }]}>
-                        {classItem.time}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.classDetails}>
-                      <View style={styles.detailRow}>
-                        <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
-                        <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                          {classItem.location}
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
-                        <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                          {classItem.instructor}
-                        </Text>
-                      </View>
-                    </View>
-                    
-                    {classIndex < dayData.classes.length - 1 && (
-                      <View style={[styles.separator, { backgroundColor: colors.border }]} />
-                    )}
-                  </View>
-                ))
-              )}
             </View>
-          ))}
+          ) : timetableData.length === 0 ? (
+            <View style={[styles.emptyContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No timetable data available
+              </Text>
+            </View>
+          ) : (
+            timetableData.map((dayData, index) => (
+              <View key={index} style={[styles.dayCard, { backgroundColor: colors.card }]}>
+                <Text style={[styles.dayTitle, { color: colors.primary }]}>
+                  {dayData.day}
+                </Text>
+                
+                {dayData.classes.length === 0 ? (
+                  <Text style={[styles.noClassesText, { color: colors.textSecondary }]}>
+                    No classes scheduled
+                  </Text>
+                ) : (
+                  dayData.classes.map((classItem: any, classIndex: number) => (
+                    <View key={classItem.id || classIndex} style={styles.classItem}>
+                      <View style={styles.classHeader}>
+                        <Text style={[styles.classTitle, { color: colors.text }]}>
+                          {classItem.title}
+                        </Text>
+                        <Text style={[styles.classTime, { color: colors.textSecondary }]}>
+                          {classItem.time}
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.classDetails}>
+                        <View style={styles.detailRow}>
+                          <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                          <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                            {classItem.location}
+                          </Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
+                          <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                            {classItem.instructor}
+                          </Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
+                          <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                            {new Date(classItem.sessionDate).toLocaleDateString()}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      {classIndex < dayData.classes.length - 1 && (
+                        <View style={[styles.separator, { backgroundColor: colors.border }]} />
+                      )}
+                    </View>
+                  ))
+                )}
+              </View>
+            ))
+          )}
         </Animated.View>
       </ScrollView>
     </View>
@@ -301,5 +364,23 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     marginTop: 16,
+  },
+  loadingContainer: {
+    padding: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  emptyContainer: {
+    padding: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
   },
 }); 

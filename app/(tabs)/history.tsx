@@ -5,18 +5,28 @@ import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
 import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+import { AttendanceService } from '@/services/attendanceService';
+import { AttendanceRecord } from '@/types';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HistoryScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
-  const { fetchAttendanceRecords } = useAttendanceStore();
+  const { fetchAttendanceRecords, attendanceRecords } = useAttendanceStore();
   const router = useRouter();
   
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   const [activeTab, setActiveTab] = useState<'overview' | 'courseDetails'>('overview');
+  const [courseStats, setCourseStats] = useState<any[]>([]);
+  const [overallStats, setOverallStats] = useState({
+    totalSessions: 0,
+    attendedSessions: 0,
+    attendanceRate: 0,
+    pendingVerifications: 0
+  });
+  const [loading, setLoading] = useState(false);
 
   console.log('HistoryScreen: Rendering with user:', user?.id);
 
@@ -52,6 +62,55 @@ export default function HistoryScreen() {
     ]).start();
   }, []);
 
+  // Fetch attendance statistics
+  const fetchAttendanceStats = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const stats = await AttendanceService.getStudentAttendanceStats(user.id);
+      setOverallStats({...stats, attendanceRate: Math.round(stats.attendanceRate)});
+      
+      // Calculate course-specific stats from attendance records
+      const courseMap = new Map();
+      
+      attendanceRecords.forEach(record => {
+        const courseKey = `${record.course_code}-${record.course_name}`;
+        if (!courseMap.has(courseKey)) {
+          courseMap.set(courseKey, {
+            id: courseKey,
+            name: record.course_name || 'Unknown Course',
+            code: record.course_code || 'N/A',
+            attendance: 0,
+            total: 0,
+            percentage: 0,
+            records: []
+          });
+        }
+        
+        const course = courseMap.get(courseKey);
+        course.records.push(record);
+        course.total++;
+        
+        if (record.status === 'present') {
+          course.attendance++;
+        }
+      });
+      
+      // Calculate percentages
+      const courseStatsArray = Array.from(courseMap.values()).map(course => ({
+        ...course,
+        percentage: course.total > 0 ? Math.round((course.attendance / course.total) * 100) : 0
+      }));
+      
+      setCourseStats(courseStatsArray);
+    } catch (error) {
+      console.error('Error fetching attendance stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     console.log('HistoryScreen: useEffect triggered with user:', user?.id);
     if (user) {
@@ -60,6 +119,13 @@ export default function HistoryScreen() {
     }
   }, [user, fetchAttendanceRecords]);
 
+  // Fetch stats when attendance records change
+  useEffect(() => {
+    if (attendanceRecords.length > 0) {
+      fetchAttendanceStats();
+    }
+  }, [attendanceRecords]);
+
   const getPerformanceCategory = (percentage: number) => {
     if (percentage >= 90) return { label: 'excellent', color: colors.success };
     if (percentage >= 75) return { label: 'good', color: colors.warning };
@@ -67,28 +133,26 @@ export default function HistoryScreen() {
   };
 
   const getOverallAttendance = () => {
-    return 80; // Mock overall attendance percentage
+    return overallStats.attendanceRate;
   };
 
-  // Mock course data
-  const courseData = [
-    {
-      id: 1,
-      name: "Data Structures & Algorithms",
-      code: "CS 201",
-      attendance: 22,
-      total: 24,
-      percentage: 92,
-    },
-    {
-      id: 2,
-      name: "Database Systems",
-      code: "CS 301",
-      attendance: 16,
-      total: 20,
-      percentage: 80,
-    },
-  ];
+  // Get recent attendance records for a course
+  const getRecentAttendanceForCourse = (courseCode: string, limit: number = 5) => {
+    return attendanceRecords
+      .filter(record => record.course_code === courseCode)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit);
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    });
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -158,7 +222,23 @@ export default function HistoryScreen() {
         </Animated.View>
 
         {/* Content based on active tab */}
-        {activeTab === 'overview' ? (
+        {loading ? (
+          <Animated.View 
+            style={[
+              styles.contentContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
+            <View style={[styles.loadingContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                Loading attendance history...
+              </Text>
+            </View>
+          </Animated.View>
+        ) : activeTab === 'overview' ? (
           <Animated.View 
             style={[
               styles.contentContainer,
@@ -201,6 +281,33 @@ export default function HistoryScreen() {
                 />
               </View>
               
+              <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: colors.primary }]}>
+                    {overallStats.attendedSessions}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                    Classes Attended
+                  </Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: colors.text }]}>
+                    {overallStats.totalSessions}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                    Total Classes
+                  </Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: colors.warning }]}>
+                    {overallStats.pendingVerifications}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                    Pending
+                  </Text>
+                </View>
+              </View>
+              
               <View style={styles.legendContainer}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
@@ -224,7 +331,7 @@ export default function HistoryScreen() {
             </View>
 
             {/* Course Performance Cards */}
-            {courseData.map((course) => {
+            {courseStats.map((course) => {
               const performance = getPerformanceCategory(course.percentage);
               return (
                 <View key={course.id} style={[styles.courseCard, { backgroundColor: colors.card }]}>
@@ -233,8 +340,8 @@ export default function HistoryScreen() {
                       {course.name}
                     </Text>
                     <View style={[styles.performanceBadge, { backgroundColor: colors.highlight }]}>
-                      <View style={[styles.badgeDot, { backgroundColor: colors.primary }]} />
-                      <Text style={[styles.badgeText, { color: colors.primary }]}>
+                      <View style={[styles.badgeDot, { backgroundColor: performance.color }]} />
+                      <Text style={[styles.badgeText, { color: performance.color }]}>
                         {course.percentage}% • {performance.label}
                       </Text>
                     </View>
@@ -258,7 +365,7 @@ export default function HistoryScreen() {
                       style={[
                         styles.progressFill, 
                         { 
-                          backgroundColor: colors.primary,
+                          backgroundColor: performance.color,
                           width: `${course.percentage}%`
                         }
                       ]} 
@@ -279,73 +386,70 @@ export default function HistoryScreen() {
             ]}
           >
             {/* Course Details Content */}
-            {courseData.map((course) => (
-              <View key={course.id} style={[styles.courseCard, { backgroundColor: colors.card }]}>
-                <View style={styles.courseHeader}>
-                  <Text style={[styles.courseTitle, { color: colors.text }]}>
-                    {course.name}
-                  </Text>
-                  <View style={[styles.performanceBadge, { backgroundColor: colors.highlight }]}>
-                    <View style={[styles.badgeDot, { backgroundColor: colors.primary }]} />
-                    <Text style={[styles.badgeText, { color: colors.primary }]}>
-                      {course.percentage}% • {getPerformanceCategory(course.percentage).label}
+            {courseStats.map((course) => {
+              const performance = getPerformanceCategory(course.percentage);
+              const recentAttendance = getRecentAttendanceForCourse(course.code);
+              
+              return (
+                <View key={course.id} style={[styles.courseCard, { backgroundColor: colors.card }]}>
+                  <View style={styles.courseHeader}>
+                    <Text style={[styles.courseTitle, { color: colors.text }]}>
+                      {course.name}
                     </Text>
+                    <View style={[styles.performanceBadge, { backgroundColor: colors.highlight }]}>
+                      <View style={[styles.badgeDot, { backgroundColor: performance.color }]} />
+                      <Text style={[styles.badgeText, { color: performance.color }]}>
+                        {course.percentage}% • {performance.label}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                
-                <Text style={[styles.courseCode, { color: colors.textSecondary }]}>
-                  {course.code}
-                </Text>
-                
-                <View style={styles.courseStats}>
-                  <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
-                    {course.attendance} Attended
+                  
+                  <Text style={[styles.courseCode, { color: colors.textSecondary }]}>
+                    {course.code}
                   </Text>
-                  <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
-                    {course.total - course.attendance} Missed
-                  </Text>
-                </View>
-                
-                <View style={styles.recentClasses}>
-                  <View style={styles.recentHeader}>
-                    <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-                    <Text style={[styles.recentTitle, { color: colors.text }]}>
-                      Recent Classes
+                  
+                  <View style={styles.courseStats}>
+                    <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
+                      {course.attendance} Attended
+                    </Text>
+                    <Text style={[styles.courseStatsText, { color: colors.textSecondary }]}>
+                      {course.total - course.attendance} Missed
                     </Text>
                   </View>
                   
-                  <View style={styles.recentClassItem}>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={[styles.recentClassName, { color: colors.text }]}>
-                      Binary Trees
-                    </Text>
-                    <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
-                      2024-01-15
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.recentClassItem}>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={[styles.recentClassName, { color: colors.text }]}>
-                      Linked Lists
-                    </Text>
-                    <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
-                      2024-01-12
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.recentClassItem}>
-                    <Ionicons name="close-circle" size={16} color={colors.error} />
-                    <Text style={[styles.recentClassName, { color: colors.text }]}>
-                      Arrays & Strings
-                    </Text>
-                    <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
-                      2024-01-10
-                    </Text>
+                  <View style={styles.recentClasses}>
+                    <View style={styles.recentHeader}>
+                      <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.recentTitle, { color: colors.text }]}>
+                        Recent Classes
+                      </Text>
+                    </View>
+                    
+                    {recentAttendance.length === 0 ? (
+                      <Text style={[styles.noRecentText, { color: colors.textSecondary }]}>
+                        No recent attendance records
+                      </Text>
+                    ) : (
+                      recentAttendance.map((record, index) => (
+                        <View key={index} style={styles.recentClassItem}>
+                          <Ionicons 
+                            name={record.status === 'present' ? "checkmark-circle" : "close-circle"} 
+                            size={16} 
+                            color={record.status === 'present' ? colors.success : colors.error} 
+                          />
+                          <Text style={[styles.recentClassName, { color: colors.text }]}>
+                            {record.course_name || 'Class Session'}
+                          </Text>
+                          <Text style={[styles.recentClassDate, { color: colors.textSecondary }]}>
+                            {formatDate(record.created_at)}
+                          </Text>
+                        </View>
+                      ))
+                    )}
                   </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </Animated.View>
         )}
       </ScrollView>
@@ -482,6 +586,22 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  statLabel: {
+    fontSize: 12,
+    marginTop: 4,
+  },
   legendContainer: {
     gap: 8,
   },
@@ -580,5 +700,19 @@ const styles = StyleSheet.create({
   },
   recentClassDate: {
     fontSize: 12,
+  },
+  loadingContainer: {
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  noRecentText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 10,
   },
 });

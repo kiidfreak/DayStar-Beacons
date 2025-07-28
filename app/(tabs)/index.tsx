@@ -8,19 +8,23 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { BeaconStatus } from '@/components/BeaconStatus';
 import { AttendanceStats } from '@/components/AttendanceStats';
 import { useBeacon } from '@/hooks/useBeacon';
+import { AttendanceService } from '@/services/attendanceService';
+import { ClassSession } from '@/types';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
-  const { fetchAttendanceRecords } = useAttendanceStore();
+  const { fetchAttendanceRecords, attendanceRecords, markAttendance, isLoading } = useAttendanceStore();
   const { isScanning, currentSession, attendanceMarked, isConnected } = useBeacon();
   const router = useRouter();
   
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
+  const [todaysSessions, setTodaysSessions] = useState<ClassSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
   console.log('HomeScreen: Rendering with user:', user?.id);
 
@@ -56,12 +60,28 @@ export default function HomeScreen() {
     ]).start();
   }, []);
 
+  // Fetch today's sessions
+  const fetchTodaysSessions = async () => {
+    if (!user) return;
+    
+    setLoadingSessions(true);
+    try {
+      const sessions = await AttendanceService.getTodaysSessions(user.id);
+      setTodaysSessions(sessions);
+      console.log('Fetched today\'s sessions:', sessions.length);
+    } catch (error) {
+      console.error('Error fetching today\'s sessions:', error);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
   useEffect(() => {
     console.log('HomeScreen: useEffect triggered with user:', user?.id);
     if (user) {
       console.log('HomeScreen: Fetching attendance records for user:', user.id);
       fetchAttendanceRecords();
-      // Optionally, trigger other fetches for courses/stats if needed
+      fetchTodaysSessions();
     }
   }, [user, fetchAttendanceRecords]);
 
@@ -71,8 +91,9 @@ export default function HomeScreen() {
       const refreshData = async () => {
         try {
           await fetchAttendanceRecords();
+          await fetchTodaysSessions();
         } catch (error) {
-          console.error('Error refreshing attendance records:', error);
+          console.error('Error refreshing data:', error);
         }
       };
       refreshData();
@@ -110,39 +131,81 @@ export default function HomeScreen() {
     setExpandedCard(expandedCard === index ? null : index);
   };
 
-  // Mock data for today's classes
-  const todaysClasses = [
-    {
-      id: 1,
-      title: "Introduction to Computer Science",
-      code: "CS 101",
-      time: "08:00 - 10:00",
-      location: "Science Block, Room 201",
-      lecturer: "Dr. James Kimani",
-      day: "Monday",
-      isExpanded: expandedCard === 0,
-    },
-    {
-      id: 2,
-      title: "Advanced Calculus",
-      code: "MATH 202",
-      time: "10:30 - 12:30",
-      location: "Mathematics Building, Room 105",
-      lecturer: "Prof. Sarah Odhiambo",
-      day: "Monday",
-      isExpanded: expandedCard === 1,
-    },
-    {
-      id: 3,
-      title: "Literary Theory",
-      code: "ENG 303",
-      time: "14:00 - 16:00",
-      location: "Arts Block, Room A12",
-      lecturer: "Dr. Michael Ochieng",
-      day: "Monday",
-      isExpanded: expandedCard === 2,
-    },
-  ];
+  // Check if attendance is marked for a session
+  const isAttendanceMarked = (sessionId: string) => {
+    return attendanceRecords.some(record => record.session_id === sessionId);
+  };
+
+  // Get attendance record for a session
+  const getAttendanceRecord = (sessionId: string) => {
+    return attendanceRecords.find(record => record.session_id === sessionId);
+  };
+
+  // Handle attendance marking
+  const handleMarkAttendance = async (sessionId: string, method: 'qr' | 'beacon' | 'manual') => {
+    if (!user) return;
+    
+    try {
+      const success = await markAttendance(sessionId, method);
+      if (success) {
+        console.log('Attendance marked successfully');
+      }
+    } catch (error) {
+      console.error('Error marking attendance:', error);
+    }
+  };
+
+  // Format time for display
+  const formatTime = (timeString: string) => {
+    if (!timeString) return 'TBD';
+    const date = new Date(timeString);
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
+
+  // Format session time range
+  const formatSessionTime = (startTime: string, endTime: string) => {
+    const start = formatTime(startTime);
+    const end = formatTime(endTime);
+    return `${start} - ${end}`;
+  };
+
+  // Get attendance status color
+  const getAttendanceStatusColor = (sessionId: string) => {
+    const record = getAttendanceRecord(sessionId);
+    if (!record) return colors.inactive;
+    
+    switch (record.status) {
+      case 'present':
+        return colors.success;
+      case 'pending':
+        return colors.warning;
+      case 'absent':
+        return colors.error;
+      default:
+        return colors.inactive;
+    }
+  };
+
+  // Get attendance status text
+  const getAttendanceStatusText = (sessionId: string) => {
+    const record = getAttendanceRecord(sessionId);
+    if (!record) return 'Not marked';
+    
+    switch (record.status) {
+      case 'present':
+        return 'Present';
+      case 'pending':
+        return 'Pending';
+      case 'absent':
+        return 'Absent';
+      default:
+        return 'Unknown';
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -151,7 +214,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-
 
         {/* Main Title */}
         <Animated.View 
@@ -185,68 +247,137 @@ export default function HomeScreen() {
             Today's Classes
           </Text>
           
-          {todaysClasses.map((classItem, index) => (
-            <View key={classItem.id} style={[styles.classCard, { backgroundColor: colors.card }]}>
-              <TouchableOpacity 
-                style={styles.classHeader}
-                onPress={() => toggleCardExpansion(index)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.classInfo}>
-                  <Text style={[styles.classTitle, { color: colors.text }]}>
-                    {classItem.title}
-                  </Text>
-                </View>
-                <View style={styles.classHeaderRight}>
-                  <View style={[styles.classCode, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.classCodeText}>{classItem.code}</Text>
-                  </View>
-                  <Ionicons 
-                    name={classItem.isExpanded ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    color={colors.textSecondary} 
-                  />
-                </View>
-              </TouchableOpacity>
-              
-              <View style={styles.classDetails}>
-                <View style={styles.detailRow}>
-                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-                  <Text style={[styles.detailText, { color: colors.text }]}>{classItem.time}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                  <Text style={[styles.detailText, { color: colors.text }]}>{classItem.location}</Text>
-                </View>
-                {classItem.isExpanded && (
-                  <>
-                    <View style={styles.detailRow}>
-                      <Ionicons name="person-outline" size={16} color={colors.textSecondary} />
-                      <Text style={[styles.detailText, { color: colors.text }]}>Lecturer: {classItem.lecturer}</Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-                      <Text style={[styles.detailText, { color: colors.text }]}>Day: {classItem.day}</Text>
-                    </View>
-                    
-                    {/* Action Buttons */}
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity style={[styles.actionButton, { borderColor: colors.border }]}>
-                        <Text style={[styles.actionButtonText, { color: colors.text }]}>Check In</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.actionButton, { borderColor: colors.border }]}>
-                        <Text style={[styles.actionButtonText, { color: colors.text }]}>Check Out</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.actionButton, { borderColor: colors.border }]}>
-                        <MaterialCommunityIcons name="qrcode-scan" size={16} color={colors.textSecondary} />
-                        <Text style={[styles.actionButtonText, { color: colors.text }]}>Scan QR</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
+          {loadingSessions ? (
+            <View style={[styles.loadingContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                Loading today's classes...
+              </Text>
             </View>
-          ))}
+          ) : todaysSessions.length === 0 ? (
+            <View style={[styles.emptyContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No classes scheduled for today
+              </Text>
+            </View>
+          ) : (
+            todaysSessions.map((session, index) => {
+              const isMarked = isAttendanceMarked(session.id);
+              const attendanceRecord = getAttendanceRecord(session.id);
+              const statusColor = getAttendanceStatusColor(session.id);
+              const statusText = getAttendanceStatusText(session.id);
+              
+              return (
+                <View key={session.id} style={[styles.classCard, { backgroundColor: colors.card }]}>
+                  <TouchableOpacity 
+                    style={styles.classHeader}
+                    onPress={() => toggleCardExpansion(index)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.classInfo}>
+                      <Text style={[styles.classTitle, { color: colors.text }]}>
+                        {session.course?.name || 'Unknown Course'}
+                      </Text>
+                    </View>
+                    <View style={styles.classHeaderRight}>
+                      <View style={[styles.classCode, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.classCodeText}>
+                          {session.course?.code || 'N/A'}
+                        </Text>
+                      </View>
+                      {isMarked && (
+                        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                          <Text style={styles.statusText}>{statusText}</Text>
+                        </View>
+                      )}
+                      <Ionicons 
+                        name={expandedCard === index ? "chevron-up" : "chevron-down"} 
+                        size={20} 
+                        color={colors.textSecondary} 
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  
+                  <View style={styles.classDetails}>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailText, { color: colors.text }]}>
+                        {formatSessionTime(session.startTime, session.endTime)}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailText, { color: colors.text }]}>
+                        {session.location || 'Location TBD'}
+                      </Text>
+                    </View>
+                    {expandedCard === index && (
+                      <>
+                        <View style={styles.detailRow}>
+                          <Ionicons name="person-outline" size={16} color={colors.textSecondary} />
+                          <Text style={[styles.detailText, { color: colors.text }]}>
+                            Lecturer: {session.course?.instructor?.name || 'TBD'}
+                          </Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+                          <Text style={[styles.detailText, { color: colors.text }]}>
+                            Date: {new Date(session.sessionDate).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        
+                        {attendanceRecord && (
+                          <View style={styles.detailRow}>
+                            <Ionicons name="checkmark-circle-outline" size={16} color={colors.textSecondary} />
+                            <Text style={[styles.detailText, { color: colors.text }]}>
+                              Check-in: {formatTime(attendanceRecord.check_in_time)}
+                            </Text>
+                          </View>
+                        )}
+                        
+                        {/* Action Buttons */}
+                        <View style={styles.actionButtons}>
+                          {!isMarked ? (
+                            <>
+                              <TouchableOpacity 
+                                style={[styles.actionButton, { borderColor: colors.border }]}
+                                onPress={() => handleMarkAttendance(session.id, 'qr')}
+                                disabled={isLoading}
+                              >
+                                <MaterialCommunityIcons name="qrcode-scan" size={16} color={colors.textSecondary} />
+                                <Text style={[styles.actionButtonText, { color: colors.text }]}>Scan QR</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={[styles.actionButton, { borderColor: colors.border }]}
+                                onPress={() => handleMarkAttendance(session.id, 'beacon')}
+                                disabled={isLoading}
+                              >
+                                <MaterialCommunityIcons name="bluetooth" size={16} color={colors.textSecondary} />
+                                <Text style={[styles.actionButtonText, { color: colors.text }]}>Beacon</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={[styles.actionButton, { borderColor: colors.border }]}
+                                onPress={() => handleMarkAttendance(session.id, 'manual')}
+                                disabled={isLoading}
+                              >
+                                <Text style={[styles.actionButtonText, { color: colors.text }]}>Manual</Text>
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <View style={[styles.attendanceMarkedContainer, { backgroundColor: colors.highlight }]}>
+                              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                              <Text style={[styles.attendanceMarkedText, { color: colors.success }]}>
+                                Attendance Marked
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                </View>
+              );
+            })
+          )}
         </Animated.View>
       </ScrollView>
     </View>
@@ -359,5 +490,47 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  loadingContainer: {
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  emptyContainer: {
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  attendanceMarkedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  attendanceMarkedText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 }); 
