@@ -3,16 +3,11 @@ import { Platform } from 'react-native';
 // Typography constants for consistent text styling across the app - Mobile optimized
 export default {
   fontFamily: {
-    regular: Platform.select({
-      ios: 'System',
-      android: 'Roboto',
-      default: 'System',
-    }),
-    bold: Platform.select({
-      ios: 'System',
-      android: 'Roboto',
-      default: 'System',
-    }),
+    regular: 'Inter_400Regular',
+    medium: 'Inter_500Medium',
+    semiBold: 'Inter_600SemiBold',
+    bold: 'Inter_700Bold',
+    heavy: 'Inter_800ExtraBold',
   },
   sizes: {
     // iOS-optimized sizes
@@ -28,10 +23,10 @@ export default {
   },
   weights: {
     regular: '400',
-    medium: Platform.select({ ios: '500', default: '500' }),
-    semiBold: Platform.select({ ios: '600', default: '600' }),
-    bold: Platform.select({ ios: '700', default: '700' }),
-    heavy: Platform.select({ ios: '800', default: '800' }),
+    medium: '500',
+    semiBold: '600',
+    bold: '700',
+    heavy: '800',
   },
   lineHeights: {
     // Better line heights for mobile readability

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Platform, Dimensions, View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -30,6 +30,7 @@ export default function TabsLayout() {
   const { themeColors } = useThemeStore();
   const { user, logout } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(-300));
@@ -37,7 +38,7 @@ export default function TabsLayout() {
   // Bulletproof fallback
   const safeThemeColors = (themeColors && typeof themeColors === 'object') ? themeColors : fallbackThemeColors;
 
-  console.log('TabsLayout - user:', user?.id, 'isDark:', isDark);
+  console.log('TabsLayout - user:', user?.id, 'isDark:', isDark, 'pathname:', pathname);
 
   // Animation on mount
   React.useEffect(() => {
@@ -82,11 +83,11 @@ export default function TabsLayout() {
 
   const navigationItems = [
     { key: 'index', label: 'Home', icon: 'home', route: '/(tabs)' },
-    { key: 'timetable', label: 'My Timetable', icon: 'calendar', route: '/(tabs)/courses' },
-    { key: 'history', label: 'Attendance History', icon: 'time', route: '/(tabs)/history' },
-    { key: 'profile', label: 'Profile', icon: 'person', route: '/(tabs)/settings' },
+    { key: 'timetable', label: 'My Timetable', icon: 'calendar', route: '/(tabs)/timetable' },
     { key: 'courses', label: 'Courses', icon: 'book', route: '/(tabs)/courses' },
-    { key: 'notifications', label: 'Notifications', icon: 'notifications', route: '/(tabs)/settings' },
+    { key: 'history', label: 'Attendance History', icon: 'time', route: '/(tabs)/history' },
+    { key: 'profile', label: 'Profile', icon: 'person', route: '/(tabs)/profile' },
+    { key: 'notifications', label: 'Notifications', icon: 'notifications', route: '/(tabs)/notifications' },
     { key: 'settings', label: 'Settings', icon: 'settings', route: '/(tabs)/settings' },
     { key: 'faq', label: 'FAQs', icon: 'help-circle', route: '/faq' },
   ];
@@ -111,34 +112,41 @@ export default function TabsLayout() {
           </Text>
         </View>
 
-        {/* Navigation Items */}
-        <View style={styles.navigationItems}>
-          {navigationItems.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.navItem,
-                item.key === 'index' && { backgroundColor: safeThemeColors.primary }
-              ]}
-              onPress={() => {
-                router.push(item.route as any);
-                setSidebarOpen(false);
-              }}
-            >
-              <Ionicons 
-                name={item.icon as any} 
-                size={20} 
-                color={item.key === 'index' ? '#FFFFFF' : safeThemeColors.text} 
-              />
-              <Text style={[
-                styles.navText, 
-                { color: item.key === 'index' ? '#FFFFFF' : safeThemeColors.text }
-              ]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+                                   {/* Navigation Items */}
+          <View style={styles.navigationItems}>
+            {navigationItems.map((item) => {
+              const isActive = pathname === item.route || 
+                (item.key === 'index' && pathname === '/(tabs)') ||
+                (item.key === 'index' && pathname === '/(tabs)/');
+              
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.navItem,
+                    isActive && { backgroundColor: safeThemeColors.primary }
+                  ]}
+                  onPress={() => {
+                    console.log('Navigating to:', item.route, 'from pathname:', pathname);
+                    router.push(item.route as any);
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <Ionicons 
+                    name={item.icon as any} 
+                    size={20} 
+                    color={isActive ? '#FFFFFF' : safeThemeColors.text} 
+                  />
+                  <Text style={[
+                    styles.navText, 
+                    { color: isActive ? '#FFFFFF' : safeThemeColors.text }
+                  ]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
         {/* Sign Out Button */}
         <TouchableOpacity 
@@ -188,6 +196,12 @@ export default function TabsLayout() {
             }} 
           />
           <Tabs.Screen 
+            name="timetable" 
+            options={{ 
+              title: 'Timetable',
+            }} 
+          />
+          <Tabs.Screen 
             name="courses" 
             options={{ 
               title: 'Courses',
@@ -199,12 +213,24 @@ export default function TabsLayout() {
               title: 'History',
             }} 
           />
-          <Tabs.Screen 
-            name="settings" 
-            options={{ 
-              title: 'Settings',
-            }} 
-          />
+                     <Tabs.Screen 
+             name="profile" 
+             options={{ 
+               title: 'Profile',
+             }} 
+           />
+           <Tabs.Screen 
+             name="notifications" 
+             options={{ 
+               title: 'Notifications',
+             }} 
+           />
+           <Tabs.Screen 
+             name="settings" 
+             options={{ 
+               title: 'Settings',
+             }} 
+           />
         </Tabs>
       </View>
 

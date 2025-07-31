@@ -3,15 +3,15 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensi
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
-import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 
 interface FAQItem {
-  id: number;
+  id: string;
   question: string;
   answer: string;
-  category: string;
+  category: 'general' | 'attendance' | 'technical' | 'account';
 }
 
 export default function FAQScreen() {
@@ -21,10 +21,7 @@ export default function FAQScreen() {
   
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
-  const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [expandedItem, setExpandedItem] = useState<number | null>(null);
-
-  console.log('FAQScreen: Rendering with user:', user?.id);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
@@ -42,6 +39,82 @@ export default function FAQScreen() {
     highlight: '#EFF6FF',
   };
 
+  // FAQ data
+  const faqData: FAQItem[] = [
+    {
+      id: '1',
+      question: 'How does TallyCheck track my attendance?',
+      answer: 'TallyCheck uses a combination of Bluetooth Low Energy (BLE) beacons and QR codes to track your attendance. When you\'re in class, the app automatically detects nearby beacons or you can scan a QR code displayed by your instructor.',
+      category: 'attendance'
+    },
+    {
+      id: '2',
+      question: 'What if I forget to check in for a class?',
+      answer: 'If you miss checking in during class, you can contact your instructor to manually mark your attendance. Some courses also allow late check-ins within a specified time window after class ends.',
+      category: 'attendance'
+    },
+    {
+      id: '3',
+      question: 'How do I enroll in a course?',
+      answer: 'Go to the Courses tab and browse available courses. Tap on a course to view details and use the "Enroll" button to join. You\'ll need to be registered for the course in your university system first.',
+      category: 'general'
+    },
+    {
+      id: '4',
+      question: 'Can I view my attendance history?',
+      answer: 'Yes! Navigate to the Attendance History tab to see your detailed attendance records, including overall performance, individual class attendance, and attendance trends over time.',
+      category: 'attendance'
+    },
+    {
+      id: '5',
+      question: 'What if my device isn\'t working properly?',
+      answer: 'First, try restarting the app and your device. If issues persist, go to Settings > Device Binding to re-register your device. For technical support, contact your university\'s IT department.',
+      category: 'technical'
+    },
+    {
+      id: '6',
+      question: 'How do I change my device?',
+      answer: 'Go to your Profile page and tap "Change Device" in the Device Binding section. Follow the instructions to register your new device. Your old device will be automatically unregistered.',
+      category: 'account'
+    },
+    {
+      id: '7',
+      question: 'Are my attendance records private?',
+      answer: 'Yes, your attendance data is private and only visible to you and your course instructors. The app follows strict privacy guidelines and your data is encrypted and securely stored.',
+      category: 'general'
+    },
+    {
+      id: '8',
+      question: 'What do the different notification types mean?',
+      answer: 'Missed notifications alert you when you\'ve missed a class. Upcoming notifications remind you about classes starting soon. Reminder notifications warn you when your attendance is below the required threshold.',
+      category: 'general'
+    },
+    {
+      id: '9',
+      question: 'How do I update my profile information?',
+      answer: 'Go to your Profile page and tap the edit button next to your name. You can update your contact information, profile picture, and other personal details from there.',
+      category: 'account'
+    },
+    {
+      id: '10',
+      question: 'What if I\'m having trouble with Bluetooth?',
+      answer: 'Make sure Bluetooth is enabled on your device. If you\'re still having issues, try toggling Bluetooth off and on, or restart your device. The app will guide you through the connection process.',
+      category: 'technical'
+    },
+    {
+      id: '11',
+      question: 'Can I use TallyCheck on multiple devices?',
+      answer: 'For security reasons, you can only use TallyCheck on one device at a time. If you need to switch devices, you\'ll need to unregister your current device first.',
+      category: 'account'
+    },
+    {
+      id: '12',
+      question: 'How accurate is the attendance tracking?',
+      answer: 'TallyCheck is highly accurate when used properly. The combination of BLE beacons and QR codes ensures reliable attendance tracking. However, it\'s important to be within range of the beacon or scan the QR code correctly.',
+      category: 'attendance'
+    }
+  ];
+
   // Animation on mount
   React.useEffect(() => {
     Animated.parallel([
@@ -58,38 +131,40 @@ export default function FAQScreen() {
     ]).start();
   }, []);
 
-  const FAQData = {
-    all: [
-      { id: 1, question: "How does attendance tracking work?", answer: "Attendance is tracked automatically when you're near the classroom beacon or by scanning QR codes.", category: "attendance" },
-      { id: 2, question: "What if I forget my phone during class?", answer: "Contact your lecturer to manually mark your attendance.", category: "device" },
-      { id: 3, question: "Can I use multiple devices?", answer: "No, only one device can be registered at a time for security.", category: "device" },
-      { id: 4, question: "How do I change my registered device?", answer: "Go to Settings > Device Management to change your device.", category: "device" },
-      { id: 5, question: "Why is my attendance not being recorded?", answer: "Check your device registration and ensure you're within range of the classroom beacon.", category: "troubleshooting" },
-    ],
-    attendance: [
-      { id: 1, question: "How does attendance tracking work?", answer: "Attendance is tracked automatically when you're near the classroom beacon or by scanning QR codes.", category: "attendance" },
-    ],
-    device: [
-      { id: 2, question: "What if I forget my phone during class?", answer: "Contact your lecturer to manually mark your attendance.", category: "device" },
-      { id: 3, question: "Can I use multiple devices?", answer: "No, only one device can be registered at a time for security.", category: "device" },
-      { id: 4, question: "How do I change my registered device?", answer: "Go to Settings > Device Management to change your device.", category: "device" },
-    ],
-    troubleshooting: [
-      { id: 5, question: "Why is my attendance not being recorded?", answer: "Check your device registration and ensure you're within range of the classroom beacon.", category: "troubleshooting" },
-    ],
+  const toggleItem = (id: string) => {
+    const newExpandedItems = new Set(expandedItems);
+    if (newExpandedItems.has(id)) {
+      newExpandedItems.delete(id);
+    } else {
+      newExpandedItems.add(id);
+    }
+    setExpandedItems(newExpandedItems);
   };
 
-  const categories = [
-    { key: 'all', label: 'All' },
-    { key: 'attendance', label: 'Attendance' },
-    { key: 'device', label: 'Device' },
-    { key: 'troubleshooting', label: 'Troubleshooting' },
-  ];
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'attendance':
+        return <Ionicons name="checkmark-circle" size={20} color={colors.success} />;
+      case 'technical':
+        return <Ionicons name="settings" size={20} color={colors.primary} />;
+      case 'account':
+        return <Ionicons name="person" size={20} color={colors.warning} />;
+      default:
+        return <Ionicons name="help-circle" size={20} color={colors.textSecondary} />;
+    }
+  };
 
-  const currentFAQs = FAQData[activeCategory as keyof typeof FAQData] || [];
-
-  const toggleItem = (id: number) => {
-    setExpandedItem(expandedItem === id ? null : id);
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'attendance':
+        return colors.success;
+      case 'technical':
+        return colors.primary;
+      case 'account':
+        return colors.warning;
+      default:
+        return colors.textSecondary;
+    }
   };
 
   return (
@@ -110,70 +185,16 @@ export default function FAQScreen() {
           ]}
         >
           <View style={styles.headerLeft}>
-            <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
-              <Text style={styles.logoText}>T</Text>
-            </View>
-            <View style={styles.logoTextContainer}>
-              <Text style={[styles.logoTitle, { color: colors.primary }]}>Tcheck</Text>
-              <Text style={[styles.logoSubtitle, { color: colors.textSecondary }]}>Student Attendance</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.menuButton}>
-            <Feather name="menu" size={24} color={colors.text} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Main Title */}
-        <Animated.View 
-          style={[
-            styles.titleContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <View style={styles.titleHeader}>
-            <Ionicons name="help-circle-outline" size={24} color={colors.text} />
             <Text style={[styles.mainTitle, { color: colors.text }]}>
               Frequently Asked Questions
             </Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              Find answers to common questions about TallyCheck
+            </Text>
           </View>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Find answers to common questions
-          </Text>
         </Animated.View>
 
-        {/* Category Tabs */}
-        <Animated.View 
-          style={[
-            styles.tabsContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          {categories.map((category) => (
-            <TouchableOpacity 
-              key={category.key}
-              style={[
-                styles.tab, 
-                activeCategory === category.key && { backgroundColor: colors.primary }
-              ]}
-              onPress={() => setActiveCategory(category.key)}
-            >
-              <Text style={[
-                styles.tabText, 
-                { color: activeCategory === category.key ? '#FFFFFF' : colors.text }
-              ]}>
-                {category.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
-
-        {/* FAQ List */}
+        {/* FAQ Items */}
         <Animated.View 
           style={[
             styles.faqContainer,
@@ -183,112 +204,98 @@ export default function FAQScreen() {
             }
           ]}
         >
-          {currentFAQs.map((item) => (
-            <TouchableOpacity 
-              key={item.id}
-              style={[styles.faqItem, { backgroundColor: colors.card }]}
-              onPress={() => toggleItem(item.id)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqHeader}>
-                <Text style={[styles.faqQuestion, { color: colors.text }]}>
-                  {item.question}
-                </Text>
-                <Ionicons 
-                  name={expandedItem === item.id ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color={colors.textSecondary} 
-                />
+          {faqData.map((item, index) => {
+            const isExpanded = expandedItems.has(item.id);
+            
+            return (
+              <View 
+                key={item.id} 
+                style={[
+                  styles.faqItem, 
+                  { 
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    marginBottom: index === faqData.length - 1 ? 0 : 12
+                  }
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.questionContainer}
+                  onPress={() => toggleItem(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.questionLeft}>
+                    <View style={styles.categoryIcon}>
+                      {getCategoryIcon(item.category)}
+                    </View>
+                    <Text style={[styles.question, { color: colors.text }]}>
+                      {item.question}
+                    </Text>
+                  </View>
+                  <Animated.View
+                    style={{
+                      transform: [{
+                        rotate: isExpanded ? '180deg' : '0deg'
+                      }]
+                    }}
+                  >
+                    <Ionicons 
+                      name="chevron-down" 
+                      size={20} 
+                      color={colors.textSecondary} 
+                    />
+                  </Animated.View>
+                </TouchableOpacity>
+                
+                {isExpanded && (
+                  <Animated.View 
+                    style={[
+                      styles.answerContainer,
+                      {
+                        borderTopColor: colors.border,
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.answer, { color: colors.textSecondary }]}>
+                      {item.answer}
+                    </Text>
+                  </Animated.View>
+                )}
               </View>
-              {expandedItem === item.id && (
-                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
-                  {item.answer}
-                </Text>
-              )}
-            </TouchableOpacity>
-          ))}
+            );
+          })}
         </Animated.View>
 
-        {/* Help & Support Section */}
+        {/* Contact Support */}
         <Animated.View 
           style={[
-            styles.helpSection,
+            styles.supportContainer,
             {
               opacity: fadeAnim,
               transform: [{ translateY: slideAnim }]
             }
           ]}
         >
-          <View style={[styles.helpCard, { backgroundColor: colors.card }]}>
-            <View style={styles.helpHeader}>
-              <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
-              <Text style={[styles.helpTitle, { color: colors.text }]}>
-                Help & Support
+          <View style={[styles.supportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.supportHeader}>
+              <Ionicons name="mail" size={24} color={colors.primary} />
+              <Text style={[styles.supportTitle, { color: colors.text }]}>
+                Still Need Help?
               </Text>
             </View>
-            <Text style={[styles.helpSubtitle, { color: colors.textSecondary }]}>
-              Get additional help and support
+            <Text style={[styles.supportText, { color: colors.textSecondary }]}>
+              Can't find the answer you're looking for? Contact our support team for personalized assistance.
             </Text>
-            
-            <TouchableOpacity style={styles.helpAction}>
-              <Ionicons name="mail-outline" size={20} color={colors.text} />
-              <Text style={[styles.helpActionText, { color: colors.text }]}>
-                Contact Support (support@tallycheck.com)
+            <TouchableOpacity 
+              style={[styles.contactButton, { backgroundColor: colors.primary }]}
+              onPress={() => console.log('Contact support pressed')}
+            >
+              <Text style={[styles.contactButtonText, { color: '#FFFFFF' }]}>
+                Contact Support
               </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.helpAction}>
-              <Ionicons name="document-text-outline" size={20} color={colors.text} />
-              <Text style={[styles.helpActionText, { color: colors.text }]}>
-                User Guide & Documentation
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.helpAction}>
-              <Ionicons name="shield-outline" size={20} color={colors.text} />
-              <Text style={[styles.helpActionText, { color: colors.text }]}>
-                Privacy Policy & Terms
-              </Text>
+              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-        </Animated.View>
-
-        {/* App Info */}
-        <Animated.View 
-          style={[
-            styles.appInfoSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <View style={[styles.appInfoCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.appInfoText, { color: colors.textSecondary, textAlign: 'center' }]}>
-              TallyCheck v1.0.0
-            </Text>
-            <Text style={[styles.appInfoText, { color: colors.textSecondary, textAlign: 'center' }]}>
-              Student Attendance Tracking System
-            </Text>
-            <Text style={[styles.appInfoText, { color: colors.textSecondary, textAlign: 'center' }]}>
-              © 2024 TallyCheck. All rights reserved.
-            </Text>
-          </View>
-        </Animated.View>
-
-        {/* Footer */}
-        <Animated.View 
-          style={[
-            styles.footer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-            Daystar University
-          </Text>
         </Animated.View>
       </ScrollView>
     </View>
@@ -308,168 +315,103 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 32,
   },
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  logoTextContainer: {
-    alignItems: 'flex-start',
-  },
-  logoTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  logoSubtitle: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  menuButton: {
-    padding: 8,
-  },
-  titleContainer: {
-    marginBottom: 32,
-  },
-  titleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    flex: 1,
   },
   mainTitle: {
     fontSize: screenWidth > 400 ? 32 : 28,
     fontWeight: '700',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
     fontWeight: '500',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    gap: 8,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
+    lineHeight: 22,
   },
   faqContainer: {
-    marginBottom: 24,
-    gap: 12,
+    marginBottom: 32,
   },
   faqItem: {
     borderRadius: 12,
-    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
-  faqHeader: {
+  questionContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
   },
-  faqQuestion: {
-    fontSize: 16,
-    fontWeight: '500',
+  questionLeft: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  categoryIcon: {
     marginRight: 12,
   },
-  faqAnswer: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 12,
-    paddingTop: 12,
+  question: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
+    flex: 1,
+  },
+  answerContainer: {
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  helpSection: {
-    marginBottom: 24,
-  },
-  helpCard: {
-    borderRadius: 16,
     padding: 20,
+    paddingTop: 16,
+  },
+  answer: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  supportContainer: {
+    marginTop: 16,
+  },
+  supportCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
-  helpHeader: {
+  supportHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 12,
   },
-  helpTitle: {
+  supportTitle: {
     fontSize: 18,
     fontWeight: '600',
+    marginLeft: 12,
   },
-  helpSubtitle: {
-    fontSize: 14,
-    marginBottom: 16,
+  supportText: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
   },
-  helpAction: {
+  contactButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
-    gap: 12,
-  },
-  helpActionText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  appInfoSection: {
-    marginBottom: 24,
-  },
-  appInfoCard: {
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingHorizontal: 20,
+    borderRadius: 8,
     gap: 8,
   },
-  appInfoText: {
-    fontSize: 14,
-  },
-  footer: {
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: 14,
+  contactButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

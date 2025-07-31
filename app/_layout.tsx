@@ -1,6 +1,13 @@
 import React from 'react';
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+} from '@expo-google-fonts/inter';
 import { Stack, SplashScreen, useRouter, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
@@ -24,6 +31,12 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
+    'Inter': Inter_400Regular,
+    'Inter_400Regular': Inter_400Regular,
+    'Inter_500Medium': Inter_500Medium,
+    'Inter_600SemiBold': Inter_600SemiBold,
+    'Inter_700Bold': Inter_700Bold,
+    'Inter_800ExtraBold': Inter_800ExtraBold,
   });
   
   const { isAuthenticated, hydrated, justLoggedOut } = useAuthStore();
@@ -195,8 +208,12 @@ function RootLayoutNav() {
       const isOnTabs = currentPath.startsWith('/(tabs)') || 
                       currentPath === '/' || 
                       currentPath === '/courses' || 
+                      currentPath === '/timetable' ||
                       currentPath === '/history' || 
-                      currentPath === '/settings';
+                      currentPath === '/profile' ||
+                      currentPath === '/notifications' ||
+                      currentPath === '/settings' ||
+                      currentPath === '/faq';
       const isOnChangePassword = currentPath === '/change-password';
       const isOnQRScanner = currentPath === '/qr-scanner';
 
@@ -215,12 +232,12 @@ function RootLayoutNav() {
           router.replace('/(auth)/login');
         }
       } else {
-        // Only navigate to tabs if not already on tabs, auth, change-password, or qr-scanner page
+        // Only navigate to tabs if not already on tabs, auth, change-password, qr-scanner, or faq page
         if (!isOnTabs && !isOnAuth && !isOnChangePassword && !isOnQRScanner) {
           console.log('Authenticated, navigating to tabs index');
           router.replace('/(tabs)');
         } else {
-          console.log('Already on tabs, auth, change-password, or qr-scanner, no navigation needed');
+          console.log('Already on tabs, auth, change-password, qr-scanner, or faq, no navigation needed');
         }
       }
     }

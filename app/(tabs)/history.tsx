@@ -128,7 +128,7 @@ export default function HistoryScreen() {
 
   const getPerformanceCategory = (percentage: number) => {
     if (percentage >= 90) return { label: 'excellent', color: colors.success };
-    if (percentage >= 75) return { label: 'good', color: colors.warning };
+    if (percentage >= 75) return { label: 'good', color: colors.primary };
     return { label: 'at risk', color: colors.error };
   };
 
@@ -251,81 +251,61 @@ export default function HistoryScreen() {
             {/* Overall Performance Card */}
             <View style={[styles.performanceCard, { backgroundColor: colors.card }]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="trending-up" size={20} color={colors.primary} />
-                <Text style={[styles.cardTitle, { color: colors.text }]}>
-                  Overall Performance
-                </Text>
-              </View>
-              <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
-                Your attendance across all enrolled courses
-              </Text>
-              
-              <View style={styles.attendanceDisplay}>
-                <Text style={[styles.attendanceLabel, { color: colors.text }]}>
-                  Overall Attendance
-                </Text>
-                <Text style={[styles.attendancePercentage, { color: colors.primary }]}>
-                  {getOverallAttendance()}%
+                <View style={styles.cardTitleContainer}>
+                  <Ionicons name="trending-up" size={20} color={colors.primary} />
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>
+                    Overall Performance
+                  </Text>
+                </View>
+                <Text style={[styles.cardDescription, { color: colors.textSecondary }]}>
+                  Your attendance across all enrolled courses
                 </Text>
               </View>
               
-              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                <View 
-                  style={[
-                    styles.progressFill, 
-                    { 
-                      backgroundColor: colors.primary,
-                      width: `${getOverallAttendance()}%`
-                    }
-                  ]} 
-                />
-              </View>
-              
-              <View style={styles.statsGrid}>
-                <View style={styles.statItem}>
-                  <Text style={[styles.statNumber, { color: colors.primary }]}>
-                    {overallStats.attendedSessions}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                    Classes Attended
-                  </Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={[styles.statNumber, { color: colors.text }]}>
-                    {overallStats.totalSessions}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                    Total Classes
-                  </Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={[styles.statNumber, { color: colors.warning }]}>
-                    {overallStats.pendingVerifications}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                    Pending
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.legendContainer}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                  <Text style={[styles.legendText, { color: colors.success }]}>
-                    Excellent: 90%+ attendance
-                  </Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
-                  <Text style={[styles.legendText, { color: colors.warning }]}>
-                    Good: 75-89% attendance
-                  </Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
-                  <Text style={[styles.legendText, { color: colors.error }]}>
-                    At Risk: Below 75%
-                  </Text>
+                             <View style={styles.cardContent}>
+                 {(() => {
+                   const overallAttendance = getOverallAttendance();
+                   const performance = getPerformanceCategory(overallAttendance);
+                   
+                   return (
+                     <>
+                       <View style={styles.attendanceDisplay}>
+                         <Text style={[styles.attendanceLabel, { color: colors.text }]}>
+                           Overall Attendance
+                         </Text>
+                         <Text style={[styles.attendancePercentage, { color: performance.color }]}>
+                           {overallAttendance}%
+                         </Text>
+                       </View>
+                       
+                       <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                         <View 
+                           style={[
+                             styles.progressFill, 
+                             { 
+                               backgroundColor: performance.color,
+                               width: `${overallAttendance}%`
+                             }
+                           ]} 
+                         />
+                       </View>
+                     </>
+                   );
+                 })()}
+                
+                <View style={styles.statsGrid}>
+                  <View style={styles.statItem}>
+                    <Text style={[styles.statLabel, { color: colors.success }]}>Excellent</Text>
+                    <Text style={[styles.statDescription, { color: colors.textSecondary }]}>90%+ attendance</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Text style={[styles.statLabel, { color: colors.primary }]}>Good</Text>
+                    <Text style={[styles.statDescription, { color: colors.textSecondary }]}>75-89% attendance</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Text style={[styles.statLabel, { color: colors.error }]}>At Risk</Text>
+                    <Text style={[styles.statDescription, { color: colors.textSecondary }]}>Below 75%</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -550,10 +530,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 16,
   },
   cardTitle: {
     fontSize: 18,
@@ -588,10 +565,10 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
+    gap: 16,
   },
   statItem: {
+    flex: 1,
     alignItems: 'center',
   },
   statNumber: {
@@ -714,5 +691,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 10,
+  },
+  // Additional styles for updated performance card
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  cardDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  cardContent: {
+    gap: 16,
+  },
+  statDescription: {
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
