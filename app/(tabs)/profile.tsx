@@ -1,17 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 interface Course {
   id: string;
-  title: string;
+  name: string;
   code: string;
   credits: number;
+  instructorName: string;
+}
+
+interface UserProfile {
+  full_name: string;
+  email: string;
+  phone: string;
+  department: string;
+  student_id: string;
 }
 
 export default function ProfileScreen() {
@@ -21,6 +31,24 @@ export default function ProfileScreen() {
   
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
+  const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    full_name: '',
+    email: '',
+    phone: '',
+    department: '',
+    student_id: '',
+  });
+  const [editForm, setEditForm] = useState<UserProfile>({
+    full_name: '',
+    email: '',
+    phone: '',
+    department: '',
+    student_id: '',
+  });
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
@@ -38,15 +66,130 @@ export default function ProfileScreen() {
     highlight: '#EFF6FF',
   };
 
-  // Mock data - replace with actual data from your stores/services
-  const mockCourses: Course[] = [
-    { id: '1', title: 'Data Structures & Algorithms', code: 'CS 201', credits: 3 },
-    { id: '2', title: 'Database Systems', code: 'CS 301', credits: 3 },
-    { id: '3', title: 'Software Engineering', code: 'CS 401', credits: 4 },
-    { id: '4', title: 'Computer Networks', code: 'CS 305', credits: 3 },
-  ];
+  // Fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.id) {
+        setLoadingProfile(false);
+        return;
+      }
 
-  const totalCredits = mockCourses.reduce((sum, course) => sum + course.credits, 0);
+      try {
+        setLoadingProfile(true);
+        
+        const { data: profileData, error: profileError } = await supabase
+          .from('users')
+          .select('full_name, email, phone, department, device_id')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError);
+          throw profileError;
+        }
+
+        const profile: UserProfile = {
+          full_name: profileData?.full_name || user.name || '',
+          email: profileData?.email || user.email || '',
+          phone: profileData?.phone || '+254 700 123 456',
+          department: profileData?.department || 'Computer Science',
+          student_id: profileData?.device_id || 'ST/2024/001',
+        };
+
+        setUserProfile(profile);
+        setEditForm(profile);
+        console.log('Profile: Fetched user profile:', profile);
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        // Set default values if fetch fails
+        const defaultProfile: UserProfile = {
+          full_name: user.name || '',
+          email: user.email || '',
+          phone: '+254 700 123 456',
+          department: 'Computer Science',
+          student_id: 'ST/2024/001',
+        };
+        setUserProfile(defaultProfile);
+        setEditForm(defaultProfile);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [user?.id]);
+
+  // Fetch enrolled courses
+  useEffect(() => {
+    const fetchEnrolledCourses = async () => {
+      if (!user?.id) {
+        setLoadingCourses(false);
+        return;
+      }
+
+      try {
+        setLoadingCourses(true);
+        
+        // Fetch enrolled courses using the same approach as courses page
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id')
+          .eq('student_id', user.id)
+          .eq('status', 'active');
+
+        if (enrollmentsError) {
+          console.error('Error fetching enrollments:', enrollmentsError);
+          throw enrollmentsError;
+        }
+
+        const enrolledCourseIds = enrollments?.map(e => e.course_id) || [];
+        console.log('Profile: Enrolled course IDs:', enrolledCourseIds);
+
+        // Fetch enrolled courses with instructor information
+        if (enrolledCourseIds.length > 0) {
+          const { data: enrolledData, error: enrolledError } = await supabase
+            .from('courses')
+            .select(`
+              *,
+              instructor:users!courses_instructor_id_fkey(
+                id,
+                full_name,
+                email,
+                role
+              )
+            `)
+            .in('id', enrolledCourseIds);
+
+          if (enrolledError) {
+            console.error('Error fetching enrolled courses:', enrolledError);
+            throw enrolledError;
+          }
+
+          const courses = (enrolledData || []).map((course: any) => ({
+            id: course.id,
+            name: course.name,
+            code: course.code,
+            credits: course.credits || 3,
+            instructorName: course.instructor?.full_name || 'Unknown Instructor',
+          }));
+
+          setEnrolledCourses(courses);
+          console.log('Profile: Fetched enrolled courses:', courses.length);
+        } else {
+          setEnrolledCourses([]);
+        }
+      } catch (error) {
+        console.error('Error fetching enrolled courses:', error);
+        setEnrolledCourses([]);
+      } finally {
+        setLoadingCourses(false);
+      }
+    };
+
+    fetchEnrolledCourses();
+  }, [user?.id]);
+
+  const totalCredits = enrolledCourses.reduce((sum, course) => sum + course.credits, 0);
 
   // Animation on mount
   React.useEffect(() => {
@@ -65,8 +208,55 @@ export default function ProfileScreen() {
   }, []);
 
   const handleEditProfile = () => {
-    // Navigate to edit profile screen
-    console.log('Edit profile pressed');
+    setIsEditing(true);
+    setEditForm(userProfile);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditForm(userProfile);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    try {
+      // Validate required fields
+      if (!editForm.full_name.trim() || !editForm.email.trim()) {
+        Alert.alert('Error', 'Name and email are required');
+        return;
+      }
+
+      // Update user profile in database
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          full_name: editForm.full_name.trim(),
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim(),
+          department: editForm.department.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError);
+        Alert.alert('Error', 'Failed to update profile. Please try again.');
+        return;
+      }
+
+      // Update local state
+      setUserProfile(editForm);
+      setIsEditing(false);
+      
+      Alert.alert('Success', 'Profile updated successfully!');
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    }
   };
 
   const handleChangeDevice = () => {
@@ -115,7 +305,7 @@ export default function ProfileScreen() {
               <View style={styles.profileImageContainer}>
                 <View style={[styles.profileImage, { backgroundColor: colors.primary }]}>
                   <Text style={styles.profileInitial}>
-                    {user?.name?.charAt(0) || 'J'}
+                    {userProfile.full_name?.charAt(0) || user?.name?.charAt(0) || 'J'}
                   </Text>
                 </View>
                 <TouchableOpacity style={[styles.cameraButton, { backgroundColor: colors.primary }]}>
@@ -124,47 +314,123 @@ export default function ProfileScreen() {
               </View>
               
               <View style={styles.profileInfo}>
-                <Text style={[styles.userName, { color: colors.text }]}>
-                  {user?.name || 'John Doe'}
-                </Text>
-                <TouchableOpacity 
-                  style={[styles.editButton, { borderColor: colors.border }]}
-                  onPress={handleEditProfile}
-                >
-                  <Feather name="edit-2" size={14} color={colors.textSecondary} />
-                  <Text style={[styles.editButtonText, { color: colors.textSecondary }]}>
-                    Edit
-                  </Text>
-                </TouchableOpacity>
+                {isEditing ? (
+                  <View style={styles.editFormContainer}>
+                    <TextInput
+                      style={[styles.editInput, { 
+                        color: colors.text, 
+                        borderColor: colors.border,
+                        backgroundColor: colors.background 
+                      }]}
+                      value={editForm.full_name}
+                      onChangeText={(text) => setEditForm(prev => ({ ...prev, full_name: text }))}
+                      placeholder="Full Name"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                    <View style={styles.editButtons}>
+                      <TouchableOpacity 
+                        style={[styles.saveButton, { backgroundColor: colors.success }]}
+                        onPress={handleSaveProfile}
+                      >
+                        <Text style={styles.saveButtonText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.cancelButton, { borderColor: colors.border }]}
+                        onPress={handleCancelEdit}
+                      >
+                        <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={[styles.userName, { color: colors.text }]}>
+                      {userProfile.full_name || user?.name || 'John Doe'}
+                    </Text>
+                    <TouchableOpacity 
+                      style={[styles.editButton, { borderColor: colors.border }]}
+                      onPress={handleEditProfile}
+                    >
+                      <Feather name="edit-2" size={14} color={colors.textSecondary} />
+                      <Text style={[styles.editButtonText, { color: colors.textSecondary }]}>
+                        Edit
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
 
             <View style={styles.contactInfo}>
               <View style={styles.contactItem}>
                 <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
-                <Text style={[styles.contactText, { color: colors.text }]}>
-                  {user?.email || 'john.doe@student.uon.ac.ke'}
-                </Text>
+                {isEditing ? (
+                  <TextInput
+                    style={[styles.editContactInput, { 
+                      color: colors.text, 
+                      borderColor: colors.border,
+                      backgroundColor: colors.background 
+                    }]}
+                    value={editForm.email}
+                    onChangeText={(text) => setEditForm(prev => ({ ...prev, email: text }))}
+                    placeholder="Email"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="email-address"
+                  />
+                ) : (
+                  <Text style={[styles.contactText, { color: colors.text }]}>
+                    {userProfile.email || user?.email || 'john.doe@student.uon.ac.ke'}
+                  </Text>
+                )}
               </View>
               
               <View style={styles.contactItem}>
                 <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
-                <Text style={[styles.contactText, { color: colors.text }]}>
-                  +254 700 123 456
-                </Text>
+                {isEditing ? (
+                  <TextInput
+                    style={[styles.editContactInput, { 
+                      color: colors.text, 
+                      borderColor: colors.border,
+                      backgroundColor: colors.background 
+                    }]}
+                    value={editForm.phone}
+                    onChangeText={(text) => setEditForm(prev => ({ ...prev, phone: text }))}
+                    placeholder="Phone"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="phone-pad"
+                  />
+                ) : (
+                  <Text style={[styles.contactText, { color: colors.text }]}>
+                    {userProfile.phone || '+254 700 123 456'}
+                  </Text>
+                )}
               </View>
               
               <View style={styles.contactItem}>
                 <Ionicons name="business-outline" size={16} color={colors.textSecondary} />
-                <Text style={[styles.contactText, { color: colors.text }]}>
-                  University of Nairobi
-                </Text>
+                {isEditing ? (
+                  <TextInput
+                    style={[styles.editContactInput, { 
+                      color: colors.text, 
+                      borderColor: colors.border,
+                      backgroundColor: colors.background 
+                    }]}
+                    value={editForm.department}
+                    onChangeText={(text) => setEditForm(prev => ({ ...prev, department: text }))}
+                    placeholder="Department"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                ) : (
+                  <Text style={[styles.contactText, { color: colors.text }]}>
+                    {userProfile.department || 'University of Nairobi'}
+                  </Text>
+                )}
               </View>
               
               <View style={styles.contactItem}>
                 <Ionicons name="card-outline" size={16} color={colors.textSecondary} />
                 <Text style={[styles.contactText, { color: colors.text }]}>
-                  ST/2024/001
+                  {userProfile.student_id || 'ST/2024/001'}
                 </Text>
               </View>
             </View>
@@ -226,23 +492,33 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.coursesList}>
-              {mockCourses.map((course, index) => (
-                <View key={course.id} style={[styles.courseItem, { backgroundColor: colors.background }]}>
-                  <View style={styles.courseInfo}>
-                    <Text style={[styles.courseTitle, { color: colors.text }]}>
-                      {course.title}
-                    </Text>
-                    <Text style={[styles.courseCode, { color: colors.textSecondary }]}>
-                      {course.code}
-                    </Text>
+              {loadingCourses ? (
+                <Text style={[styles.courseItem, { backgroundColor: colors.background }]}>
+                  Loading courses...
+                </Text>
+              ) : enrolledCourses.length === 0 ? (
+                <Text style={[styles.courseItem, { backgroundColor: colors.background }]}>
+                  No courses enrolled yet.
+                </Text>
+              ) : (
+                enrolledCourses.map((course, index) => (
+                  <View key={course.id} style={[styles.courseItem, { backgroundColor: colors.background }]}>
+                    <View style={styles.courseInfo}>
+                      <Text style={[styles.courseTitle, { color: colors.text }]}>
+                        {course.name}
+                      </Text>
+                      <Text style={[styles.courseCode, { color: colors.textSecondary }]}>
+                        {course.code}
+                      </Text>
+                    </View>
+                    <View style={[styles.creditsTag, { backgroundColor: colors.border }]}>
+                      <Text style={[styles.creditsText, { color: colors.text }]}>
+                        {course.credits} credits
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[styles.creditsTag, { backgroundColor: colors.border }]}>
-                    <Text style={[styles.creditsText, { color: colors.text }]}>
-                      {course.credits} credits
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </View>
         </Animated.View>
@@ -444,5 +720,50 @@ const styles = StyleSheet.create({
   creditsText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  editFormContainer: {
+    flex: 1,
+    gap: 12,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  saveButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  cancelButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  editContactInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
   },
 }); 

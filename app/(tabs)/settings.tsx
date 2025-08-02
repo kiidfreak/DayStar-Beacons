@@ -1,11 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions, Switch, Alert, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+interface NotificationSettings {
+  attendanceReminders: boolean;
+  classAlerts: boolean;
+  systemUpdates: boolean;
+  emailDigest: boolean;
+}
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
@@ -15,13 +25,152 @@ export default function SettingsScreen() {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   
-  // Notification toggles
+  // Notification toggles with default values
   const [attendanceReminders, setAttendanceReminders] = useState(true);
   const [classAlerts, setClassAlerts] = useState(true);
   const [systemUpdates, setSystemUpdates] = useState(false);
   const [emailDigest, setEmailDigest] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState({
+    isRegistered: false,
+    deviceId: null,
+    registeredAt: null
+  });
 
   console.log('SettingsScreen: Rendering with user:', user?.id);
+
+  // Load saved notification settings
+  useEffect(() => {
+    loadNotificationSettings();
+    loadDeviceStatus();
+  }, []);
+
+  const loadNotificationSettings = async () => {
+    try {
+      const settings = await AsyncStorage.getItem('notificationSettings');
+      if (settings) {
+        const parsedSettings: NotificationSettings = JSON.parse(settings);
+        setAttendanceReminders(parsedSettings.attendanceReminders);
+        setClassAlerts(parsedSettings.classAlerts);
+        setSystemUpdates(parsedSettings.systemUpdates);
+        setEmailDigest(parsedSettings.emailDigest);
+      }
+    } catch (error) {
+      console.error('Error loading notification settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDeviceStatus = async () => {
+    const status = await getDeviceRegistrationStatus();
+    setDeviceStatus(status);
+  };
+
+  const checkNotificationSettings = () => {
+    // This function can be called from other parts of the app to check if notifications should be sent
+    return {
+      attendanceReminders,
+      classAlerts,
+      systemUpdates,
+      emailDigest
+    };
+  };
+
+  const refreshDeviceStatus = async () => {
+    await loadDeviceStatus();
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadNotificationSettings(),
+        loadDeviceStatus()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing settings:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const saveNotificationSettings = async (settings: NotificationSettings) => {
+    try {
+      await AsyncStorage.setItem('notificationSettings', JSON.stringify(settings));
+      console.log('Notification settings saved:', settings);
+    } catch (error) {
+      console.error('Error saving notification settings:', error);
+    }
+  };
+
+  const handleAttendanceRemindersToggle = async (value: boolean) => {
+    setAttendanceReminders(value);
+    const settings: NotificationSettings = {
+      attendanceReminders: value,
+      classAlerts,
+      systemUpdates,
+      emailDigest,
+    };
+    await saveNotificationSettings(settings);
+    
+    if (value) {
+      // Request notification permissions if enabling
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please enable notifications in your device settings to receive attendance reminders.'
+        );
+      }
+    }
+  };
+
+  const handleClassAlertsToggle = async (value: boolean) => {
+    setClassAlerts(value);
+    const settings: NotificationSettings = {
+      attendanceReminders,
+      classAlerts: value,
+      systemUpdates,
+      emailDigest,
+    };
+    await saveNotificationSettings(settings);
+  };
+
+  const handleSystemUpdatesToggle = async (value: boolean) => {
+    setSystemUpdates(value);
+    const settings: NotificationSettings = {
+      attendanceReminders,
+      classAlerts,
+      systemUpdates: value,
+      emailDigest,
+    };
+    await saveNotificationSettings(settings);
+  };
+
+  const handleEmailDigestToggle = async (value: boolean) => {
+    setEmailDigest(value);
+    const settings: NotificationSettings = {
+      attendanceReminders,
+      classAlerts,
+      systemUpdates,
+      emailDigest: value,
+    };
+    await saveNotificationSettings(settings);
+    
+    if (value) {
+      // Update user preferences in database
+      try {
+        await supabase
+          .from('users')
+          .update({ email_digest_enabled: true })
+          .eq('id', user?.id);
+      } catch (error) {
+        console.error('Error updating email digest preference:', error);
+      }
+    }
+  };
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
@@ -64,16 +213,75 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleChangeDevice = () => {
-    // Show alert for device change
+  const handleChangeDevice = async () => {
     Alert.alert(
-      'Change Device',
-      'This will unregister your current device. You will need to register a new device for attendance tracking.',
+      'Change Device Registration',
+      'This will unregister your current device. You will need to register a new device for attendance tracking. Are you sure you want to continue?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', style: 'destructive' }
+        { 
+          text: 'Continue', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear device registration from database
+              await supabase
+                .from('users')
+                .update({ 
+                  device_id: null,
+                  device_registered_at: null,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', user?.id);
+
+              // Clear local device data
+              await AsyncStorage.removeItem('deviceRegistration');
+              
+              Alert.alert(
+                'Device Unregistered',
+                'Your device has been unregistered. You will need to register a new device to continue using attendance tracking.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Navigate to device registration screen or logout
+                      router.replace('/(auth)/login');
+                    }
+                  }
+                ]
+              );
+            } catch (error) {
+              console.error('Error unregistering device:', error);
+              Alert.alert('Error', 'Failed to unregister device. Please try again.');
+            }
+          }
+        }
       ]
     );
+  };
+
+  const getDeviceRegistrationStatus = async () => {
+    try {
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('device_id, device_registered_at')
+        .eq('id', user?.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching device status:', error);
+        return { isRegistered: false, deviceId: null, registeredAt: null };
+      }
+
+      return {
+        isRegistered: !!userData?.device_id,
+        deviceId: userData?.device_id,
+        registeredAt: userData?.device_registered_at
+      };
+    } catch (error) {
+      console.error('Error getting device status:', error);
+      return { isRegistered: false, deviceId: null, registeredAt: null };
+    }
   };
 
   return (
@@ -82,6 +290,14 @@ export default function SettingsScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         
 
@@ -136,7 +352,7 @@ export default function SettingsScreen() {
                 </View>
                 <Switch
                   value={attendanceReminders}
-                  onValueChange={setAttendanceReminders}
+                  onValueChange={handleAttendanceRemindersToggle}
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor="#FFFFFF"
                 />
@@ -153,7 +369,7 @@ export default function SettingsScreen() {
                 </View>
                 <Switch
                   value={classAlerts}
-                  onValueChange={setClassAlerts}
+                  onValueChange={handleClassAlertsToggle}
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor="#FFFFFF"
                 />
@@ -170,7 +386,7 @@ export default function SettingsScreen() {
                 </View>
                 <Switch
                   value={systemUpdates}
-                  onValueChange={setSystemUpdates}
+                  onValueChange={handleSystemUpdatesToggle}
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor="#FFFFFF"
                 />
@@ -187,7 +403,7 @@ export default function SettingsScreen() {
                 </View>
                 <Switch
                   value={emailDigest}
-                  onValueChange={setEmailDigest}
+                  onValueChange={handleEmailDigestToggle}
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor="#FFFFFF"
                 />
@@ -217,12 +433,34 @@ export default function SettingsScreen() {
               Manage your registered device for attendance tracking
             </Text>
             
+            {/* Device Status */}
+            <View style={styles.deviceStatus}>
+              <View style={styles.deviceInfo}>
+                <View style={styles.statusRow}>
+                  <Ionicons 
+                    name={deviceStatus.isRegistered ? "checkmark-circle" : "close-circle"} 
+                    size={20} 
+                    color={deviceStatus.isRegistered ? colors.success : colors.error} 
+                  />
+                  <Text style={[styles.deviceStatusText, { color: colors.text }]}>
+                    {deviceStatus.isRegistered ? 'Device Registered' : 'Device Not Registered'}
+                  </Text>
+                  {deviceStatus.isRegistered && (
+                    <View style={[styles.activeTag, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.activeTagText}>Active</Text>
+                    </View>
+                  )}
+                </View>
+               
+              </View>
+            </View>
+            
             <TouchableOpacity 
               style={[styles.changeDeviceButton, { borderColor: colors.border }]}
               onPress={handleChangeDevice}
             >
               <Text style={[styles.changeDeviceText, { color: colors.text }]}>
-                Change Device Registration
+                {deviceStatus.isRegistered ? 'Change Device Registration' : 'Register Device'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -419,5 +657,38 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
     marginLeft: 12,
+  },
+  deviceStatus: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  deviceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  deviceStatusText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  activeTag: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  activeTagText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deviceDetails: {
+    fontSize: 14,
+    marginTop: 4,
   },
 });

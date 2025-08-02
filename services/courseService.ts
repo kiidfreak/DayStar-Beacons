@@ -150,7 +150,8 @@ export class CourseService {
 
       if (enrolledIds.length > 0) {
         console.log('getAvailableCourses: filtering out enrolledIds', enrolledIds);
-        query = query.not('id', 'in', `(${enrolledIds.map(id => `'${id}'`).join(',')})`);
+        // Use the correct Supabase syntax for NOT IN
+        query = query.not('id', 'in', enrolledIds);
       }
 
       const { data, error } = await query;

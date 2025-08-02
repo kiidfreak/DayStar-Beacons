@@ -6,6 +6,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { CourseService } from '@/services/courseService';
 import { Course } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -71,27 +72,135 @@ export default function CoursesScreen() {
       try {
         setLoading(true);
         
-        // Fetch enrolled courses
-        const enrolledCourses = await CourseService.getStudentCourses(user.id);
-        const enrolledWithFlag = enrolledCourses.map(course => ({
-          ...course,
-          isEnrolled: true,
-          enrollment: Math.floor(Math.random() * 50) + 20, // Mock enrollment count
-          rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Mock rating between 3.0-5.0
-        }));
+        // Fetch enrolled courses using the same approach as useBeacon
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('student_course_enrollments')
+          .select('course_id')
+          .eq('student_id', user.id)
+          .eq('status', 'active');
 
-        // Fetch available courses
-        const availableCourses = await CourseService.getAvailableCourses('daystar-university', user.id);
-        const availableWithFlag = availableCourses.map(course => ({
-          ...course,
-          isEnrolled: false,
-          enrollment: Math.floor(Math.random() * 50) + 20, // Mock enrollment count
-          rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Mock rating between 3.0-5.0
-        }));
+        if (enrollmentsError) {
+          console.error('Error fetching enrollments:', enrollmentsError);
+          throw enrollmentsError;
+        }
+
+        const enrolledCourseIds = enrollments?.map(e => e.course_id) || [];
+        console.log('Enrolled course IDs:', enrolledCourseIds);
+
+        // Fetch enrolled courses with instructor information
+        let enrolledCourses: CourseWithEnrollment[] = [];
+        if (enrolledCourseIds.length > 0) {
+          const { data: enrolledData, error: enrolledError } = await supabase
+            .from('courses')
+            .select(`
+              *,
+              instructor:users!courses_instructor_id_fkey(
+                id,
+                full_name,
+                email,
+                role
+              )
+            `)
+            .in('id', enrolledCourseIds);
+
+          if (enrolledError) {
+            console.error('Error fetching enrolled courses:', enrolledError);
+            throw enrolledError;
+          }
+
+          enrolledCourses = (enrolledData || []).map((course: any) => ({
+            id: course.id,
+            code: course.code,
+            name: course.name,
+            instructorId: course.instructor_id,
+            instructor: course.instructor,
+            instructorName: course.instructor?.full_name || 'Unknown Instructor',
+            location: course.location,
+            schedule: course.schedule,
+            schoolId: course.school_id || 'daystar-university',
+            school: undefined,
+            department: course.department,
+            semester: course.semester,
+            academicYear: course.academic_year,
+            maxStudents: course.max_students || 50,
+            credits: course.credits || 3,
+            beaconId: course.beacon_id,
+            beacon: undefined,
+            approvalRequired: course.approval_required || false,
+            room: course.room,
+            beaconMacAddress: course.beacon_mac_address,
+            startTime: course.start_time,
+            endTime: course.end_time,
+            days: course.days,
+            description: course.description,
+            createdAt: course.created_at,
+            updatedAt: course.updated_at,
+            isEnrolled: true,
+            enrollment: Math.floor(Math.random() * 50) + 20, // Mock enrollment count
+            rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Mock rating between 3.0-5.0
+          }));
+        }
+
+        // Fetch available courses (not enrolled)
+        const { data: availableData, error: availableError } = await supabase
+          .from('courses')
+          .select(`
+            *,
+            instructor:users!courses_instructor_id_fkey(
+              id,
+              full_name,
+              email,
+              role
+            )
+          `);
+
+        if (availableError) {
+          console.error('Error fetching available courses:', availableError);
+          throw availableError;
+        }
+
+        // Filter out enrolled courses and add enrollment flags
+        const availableCourses = (availableData || [])
+          .filter(course => !enrolledCourseIds.includes(course.id))
+          .map((course: any) => ({
+            id: course.id,
+            code: course.code,
+            name: course.name,
+            instructorId: course.instructor_id,
+            instructor: course.instructor,
+            instructorName: course.instructor?.full_name || 'Unknown Instructor',
+            schoolId: course.school_id || 'daystar-university',
+            maxStudents: course.max_students || 50,
+            credits: course.credits || 3,
+            approvalRequired: course.approval_required || false,
+            createdAt: course.created_at,
+            updatedAt: course.updated_at,
+            location: course.location,
+            schedule: course.schedule,
+            department: course.department,
+            semester: course.semester,
+            academicYear: course.academic_year,
+            beaconId: course.beacon_id,
+            beacon: course.beacon,
+            room: course.room,
+            beaconMacAddress: course.beacon_mac_address,
+            startTime: course.start_time,
+            endTime: course.end_time,
+            days: course.days,
+            description: course.description,
+            isEnrolled: false,
+            enrollment: Math.floor(Math.random() * 50) + 20, // Mock enrollment count
+            rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Mock rating between 3.0-5.0
+          }));
 
         // Combine all courses
-        const allCourses = [...enrolledWithFlag, ...availableWithFlag];
+        const allCourses = [...enrolledCourses, ...availableCourses];
         setCourses(allCourses);
+        console.log('Fetched courses:', {
+          enrolled: enrolledCourses.length,
+          available: availableCourses.length,
+          total: allCourses.length
+        });
       } catch (error) {
         console.error('Error fetching courses:', error);
         Alert.alert('Error', 'Failed to load courses. Please try again.');
@@ -127,12 +236,37 @@ export default function CoursesScreen() {
       if (!course) return;
 
       if (course.isEnrolled) {
-        // Unenroll from course
-        await CourseService.dropCourse(courseId);
+        // Unenroll from course using direct Supabase call
+        const { error: dropError } = await supabase
+          .from('student_course_enrollments')
+          .update({ status: 'dropped' })
+          .eq('student_id', user.id)
+          .eq('course_id', courseId);
+
+        if (dropError) {
+          console.error('Error dropping course:', dropError);
+          throw new Error(dropError.message);
+        }
+
         Alert.alert('Success', 'Successfully unenrolled from course.');
       } else {
-        // Enroll in course
-        await CourseService.enrollInCourse(courseId);
+        // Enroll in course using direct Supabase call
+        const enrollmentObj = {
+          student_id: user.id,
+          course_id: courseId,
+          status: 'active',
+          enrollment_date: new Date().toISOString(),
+        };
+
+        const { error: enrollError } = await supabase
+          .from('student_course_enrollments')
+          .insert(enrollmentObj);
+
+        if (enrollError) {
+          console.error('Error enrolling in course:', enrollError);
+          throw new Error(enrollError.message);
+        }
+
         Alert.alert('Success', 'Successfully enrolled in course.');
       }
 

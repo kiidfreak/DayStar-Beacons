@@ -1,11 +1,24 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions, Alert, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
+import * as Notifications from 'expo-notifications';
 
 const { width: screenWidth } = Dimensions.get('window');
+
+// Configure notifications
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 interface Notification {
   id: string;
@@ -19,6 +32,8 @@ interface Notification {
   };
   timestamp: string;
   read: boolean;
+  session_id?: string;
+  course_id?: string;
 }
 
 interface NotificationListProps {
@@ -39,6 +54,72 @@ export default function NotificationsScreen() {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   const [selectedTab, setSelectedTab] = useState<'all' | 'missed' | 'upcoming' | 'unread'>('all');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Request notification permissions on mount
+  useEffect(() => {
+    const requestPermissions = async () => {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      
+      if (finalStatus !== 'granted') {
+        console.log('Notification permissions not granted');
+        return;
+      }
+      
+      console.log('Notification permissions granted');
+    };
+
+    requestPermissions();
+  }, []);
+
+  // Set up notification listener
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      console.log('Notification tapped:', data);
+      
+      // Handle notification tap based on type
+      if (data.type === 'upcoming' || data.type === 'missed') {
+        // Navigate to the main dashboard to show the relevant session
+        router.push('/(tabs)');
+      } else if (data.type === 'schedule') {
+        // Navigate to courses page to see tomorrow's schedule
+        router.push('/(tabs)/courses');
+      }
+    });
+
+    return () => subscription.remove();
+  }, [router]);
+
+  // Function to send push notification
+  const sendPushNotification = async (notification: Notification) => {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: notification.title,
+          body: notification.message,
+          data: {
+            notificationId: notification.id,
+            type: notification.type,
+            sessionId: notification.session_id,
+            courseId: notification.course_id,
+          },
+        },
+        trigger: null, // Send immediately
+      });
+      console.log('Push notification sent:', notification.title);
+    } catch (error) {
+      console.error('Error sending push notification:', error);
+    }
+  };
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
@@ -56,71 +137,195 @@ export default function NotificationsScreen() {
     highlight: '#EFF6FF',
   };
 
-  // Mock notifications data
-  const mockNotifications: Notification[] = [
-    {
-      id: '1',
-      type: 'missed',
-      priority: 'high',
-      title: 'Missed Class',
-      message: 'You missed Database Systems class today at 2:00 PM',
-      course: { name: 'Database Systems', code: 'CS 301' },
-      timestamp: '2024-01-15T14:00:00Z',
-      read: false,
-    },
-    {
-      id: '2',
-      type: 'upcoming',
-      priority: 'medium',
-      title: 'Class Starting Soon',
-      message: 'Data Structures class starts in 30 minutes',
-      course: { name: 'Data Structures & Algorithms', code: 'CS 201' },
-      timestamp: '2024-01-15T13:30:00Z',
-      read: false,
-    },
-    {
-      id: '3',
-      type: 'reminder',
-      priority: 'high',
-      title: 'Attendance Reminder',
-      message: 'Your attendance in Software Engineering is below 75%',
-      course: { name: 'Software Engineering', code: 'CS 401' },
-      timestamp: '2024-01-15T12:00:00Z',
-      read: true,
-    },
-    {
-      id: '4',
-      type: 'schedule',
-      priority: 'low',
-      title: "Tomorrow's Schedule",
-      message: 'You have 3 classes scheduled for tomorrow',
-      timestamp: '2024-01-15T10:00:00Z',
-      read: true,
-    },
-    {
-      id: '5',
-      type: 'system',
-      priority: 'low',
-      title: 'System Update',
-      message: 'TallyCheck has been updated with new features',
-      timestamp: '2024-01-14T16:00:00Z',
-      read: true,
-    },
-  ];
+  // Fetch notifications based on course sessions
+  useEffect(() => {
+    fetchNotifications();
+  }, [user?.id]);
 
-  const unreadCount = mockNotifications.filter(n => !n.read).length;
+  const fetchNotifications = async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Get user's enrolled courses
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('student_course_enrollments')
+        .select('course_id')
+        .eq('student_id', user.id)
+        .eq('status', 'active');
+
+      if (enrollmentsError) {
+        console.error('Error fetching enrollments:', enrollmentsError);
+        throw enrollmentsError;
+      }
+
+      const enrolledCourseIds = enrollments?.map(e => e.course_id) || [];
+      
+      if (enrolledCourseIds.length === 0) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get today's date and time
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const currentTime = now.toTimeString().split(' ')[0];
+
+      // Fetch class sessions for enrolled courses
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('class_sessions')
+        .select(`
+          *,
+          course:courses(
+            id,
+            name,
+            code
+          )
+        `)
+        .in('course_id', enrolledCourseIds)
+        .gte('session_date', today)
+        .order('session_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (sessionsError) {
+        console.error('Error fetching sessions:', sessionsError);
+        throw sessionsError;
+      }
+
+      // Generate notifications based on sessions
+      const generatedNotifications: Notification[] = [];
+      
+      sessions?.forEach((session: any) => {
+        const sessionDate = new Date(session.session_date);
+        const sessionTime = session.start_time;
+        const sessionDateTime = new Date(`${session.session_date}T${sessionTime}`);
+        const timeDiff = sessionDateTime.getTime() - now.getTime();
+        const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+        // Check if session is today
+        const isToday = session.session_date === today;
+        
+        if (isToday) {
+          // Upcoming session (within 30 minutes)
+          if (hoursDiff > 0 && hoursDiff <= 0.5) {
+            const notification: Notification = {
+              id: `upcoming-${session.id}`,
+              type: 'upcoming',
+              priority: 'high',
+              title: 'Class Starting Soon',
+              message: `${session.course.name} starts in ${Math.round(hoursDiff * 60)} minutes`,
+              course: {
+                name: session.course.name,
+                code: session.course.code
+              },
+              timestamp: new Date().toISOString(),
+              read: false,
+              session_id: session.id,
+              course_id: session.course.id
+            };
+            generatedNotifications.push(notification);
+            
+            // Send push notification for upcoming sessions
+            sendPushNotification(notification);
+          }
+          
+          // Missed session (past start time)
+          if (hoursDiff < 0) {
+            const notification: Notification = {
+              id: `missed-${session.id}`,
+              type: 'missed',
+              priority: 'high',
+              title: 'Missed Class',
+              message: `You missed ${session.course.name} class today at ${sessionTime}`,
+              course: {
+                name: session.course.name,
+                code: session.course.code
+              },
+              timestamp: new Date().toISOString(),
+              read: false,
+              session_id: session.id,
+              course_id: session.course.id
+            };
+            generatedNotifications.push(notification);
+            
+            // Send push notification for missed sessions
+            sendPushNotification(notification);
+          }
+        } else {
+          // Future sessions (tomorrow and beyond)
+          const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+          
+          if (daysDiff === 1) {
+            // Tomorrow's schedule
+            const notification: Notification = {
+              id: `schedule-${session.id}`,
+              type: 'schedule',
+              priority: 'medium',
+              title: "Tomorrow's Schedule",
+              message: `${session.course.name} at ${sessionTime}`,
+              course: {
+                name: session.course.name,
+                code: session.course.code
+              },
+              timestamp: new Date().toISOString(),
+              read: false,
+              session_id: session.id,
+              course_id: session.course.id
+            };
+            generatedNotifications.push(notification);
+            
+            // Send push notification for tomorrow's schedule
+            sendPushNotification(notification);
+          }
+        }
+      });
+
+      // Add system notifications (only send once per app session)
+      const systemNotification: Notification = {
+        id: 'system-1',
+        type: 'system',
+        priority: 'low',
+        title: 'Welcome to TallyCheck',
+        message: 'Your attendance tracking is now active. Stay on top of your classes!',
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      generatedNotifications.push(systemNotification);
+      
+      // Send system notification only if it's the first time
+      const hasSystemNotification = notifications.some(n => n.id === 'system-1');
+      if (!hasSystemNotification) {
+        sendPushNotification(systemNotification);
+      }
+
+      setNotifications(generatedNotifications);
+      console.log('Notifications: Generated', generatedNotifications.length, 'notifications');
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   // Filter notifications based on selected tab
   const filterNotifications = (filter: string) => {
     switch (filter) {
       case 'missed':
-        return mockNotifications.filter(n => n.type === 'missed');
+        return notifications.filter(n => n.type === 'missed');
       case 'upcoming':
-        return mockNotifications.filter(n => n.type === 'upcoming');
+        return notifications.filter(n => n.type === 'upcoming');
       case 'unread':
-        return mockNotifications.filter(n => !n.read);
+        return notifications.filter(n => !n.read);
       default:
-        return mockNotifications;
+        return notifications;
     }
   };
 
@@ -141,18 +346,56 @@ export default function NotificationsScreen() {
   }, []);
 
   const markAllAsRead = () => {
-    console.log('Mark all as read pressed');
-    // Implement mark all as read functionality
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    Alert.alert('Success', 'All notifications marked as read');
   };
 
   const markAsRead = (id: string) => {
-    console.log('Mark as read:', id);
-    // Implement mark as read functionality
+    setNotifications(prev => 
+      prev.map(n => n.id === id ? { ...n, read: true } : n)
+    );
   };
 
   const deleteNotification = (id: string) => {
-    console.log('Delete notification:', id);
-    // Implement delete notification functionality
+    Alert.alert(
+      'Delete Notification',
+      'Are you sure you want to delete this notification?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+          }
+        }
+      ]
+    );
+  };
+
+  const clearAllNotifications = () => {
+    Alert.alert(
+      'Clear All Notifications',
+      'Are you sure you want to clear all notifications?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear All', 
+          style: 'destructive',
+          onPress: () => {
+            setNotifications([]);
+            // Also clear device notifications
+            Notifications.dismissAllNotificationsAsync();
+          }
+        }
+      ]
+    );
+  };
+
+  const refreshNotifications = async () => {
+    setRefreshing(true);
+    await fetchNotifications();
+    setRefreshing(false);
   };
 
   const getIcon = (type: string) => {
@@ -202,6 +445,14 @@ export default function NotificationsScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshNotifications}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {/* Header */}
         <Animated.View 
@@ -241,15 +492,27 @@ export default function NotificationsScreen() {
             </Text>
           </TouchableOpacity>
           
-          <TouchableOpacity 
-            style={[styles.markAllButton, { borderColor: colors.border }]}
-            onPress={markAllAsRead}
-          >
-            <Feather name="check-circle" size={16} color={colors.textSecondary} />
-            <Text style={[styles.markAllText, { color: colors.textSecondary }]}>
-              Mark All Read
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={[styles.markAllButton, { borderColor: colors.border }]}
+              onPress={markAllAsRead}
+            >
+              <Feather name="check-circle" size={16} color={colors.textSecondary} />
+              <Text style={[styles.markAllText, { color: colors.textSecondary }]}>
+                Mark All Read
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.clearAllButton, { borderColor: colors.error }]}
+              onPress={clearAllNotifications}
+            >
+              <Feather name="trash-2" size={16} color={colors.error} />
+              <Text style={[styles.clearAllText, { color: colors.error }]}>
+                Clear All
+              </Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
         {/* Tab Navigation */}
@@ -293,15 +556,23 @@ export default function NotificationsScreen() {
             }
           ]}
         >
-          <NotificationList
-            notifications={filterNotifications(selectedTab)}
-            onMarkAsRead={markAsRead}
-            onDelete={deleteNotification}
-            getIcon={getIcon}
-            getPriorityColor={getPriorityColor}
-            formatTime={formatTime}
-            colors={colors}
-          />
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                Loading notifications...
+              </Text>
+            </View>
+          ) : (
+            <NotificationList
+              notifications={filterNotifications(selectedTab)}
+              onMarkAsRead={markAsRead}
+              onDelete={deleteNotification}
+              getIcon={getIcon}
+              getPriorityColor={getPriorityColor}
+              formatTime={formatTime}
+              colors={colors}
+            />
+          )}
         </Animated.View>
       </ScrollView>
     </View>
@@ -461,6 +732,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  clearAllText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
   tabContainer: {
     marginBottom: 24,
   },
@@ -542,10 +830,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 4,
-  },
   actionButton: {
     width: 32,
     height: 32,
@@ -582,5 +866,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     paddingHorizontal: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 
