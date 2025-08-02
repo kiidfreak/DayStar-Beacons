@@ -1,22 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Animated, Dimensions, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { CourseService } from '@/services/courseService';
+import { Course } from '@/types';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-interface Course {
-  id: string;
-  title: string;
-  code: string;
-  instructor: string;
-  description: string;
-  credits: number;
-  enrollment: number;
-  rating: number;
+interface CourseWithEnrollment extends Course {
   isEnrolled: boolean;
+  enrollment?: number;
+  rating?: number;
 }
 
 export default function CoursesScreen() {
@@ -28,8 +24,9 @@ export default function CoursesScreen() {
   const [slideAnim] = useState(new Animated.Value(30));
   const [activeTab, setActiveTab] = useState<'myCourses' | 'available'>('myCourses');
   const [searchQuery, setSearchQuery] = useState('');
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<CourseWithEnrollment[]>([]);
+  const [filteredCourses, setFilteredCourses] = useState<CourseWithEnrollment[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Fallback colors to prevent undefined errors
   const colors = themeColors || {
@@ -63,72 +60,108 @@ export default function CoursesScreen() {
     ]).start();
   }, []);
 
-  // Mock data - replace with actual API calls
+  // Fetch real course data
   useEffect(() => {
-    const mockCourses: Course[] = [
-      {
-        id: '1',
-        title: 'Advanced Web Development',
-        code: 'CS 401',
-        instructor: 'Dr. Smith',
-        description: 'Learn modern web development with React, Node.js, and databases.',
-        credits: 3,
-        enrollment: 85,
-        rating: 4.5,
-        isEnrolled: true,
-      },
-      {
-        id: '2',
-        title: 'Mobile App Development',
-        code: 'CS 402',
-        instructor: 'Prof. Johnson',
-        description: 'Build native mobile applications using React Native and Expo.',
-        credits: 4,
-        enrollment: 72,
-        rating: 4.2,
-        isEnrolled: false,
-      },
-      {
-        id: '3',
-        title: 'Database Systems',
-        code: 'CS 301',
-        instructor: 'Dr. Williams',
-        description: 'Advanced database design, implementation, and management.',
-        credits: 3,
-        enrollment: 95,
-        rating: 4.7,
-        isEnrolled: false,
-      },
-    ];
-    
-    setCourses(mockCourses);
-  }, []);
+    const fetchCourses = async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        
+        // Fetch enrolled courses
+        const enrolledCourses = await CourseService.getStudentCourses(user.id);
+        const enrolledWithFlag = enrolledCourses.map(course => ({
+          ...course,
+          isEnrolled: true,
+          enrollment: Math.floor(Math.random() * 50) + 20, // Mock enrollment count
+          rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Mock rating between 3.0-5.0
+        }));
+
+        // Fetch available courses
+        const availableCourses = await CourseService.getAvailableCourses('daystar-university', user.id);
+        const availableWithFlag = availableCourses.map(course => ({
+          ...course,
+          isEnrolled: false,
+          enrollment: Math.floor(Math.random() * 50) + 20, // Mock enrollment count
+          rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Mock rating between 3.0-5.0
+        }));
+
+        // Combine all courses
+        const allCourses = [...enrolledWithFlag, ...availableWithFlag];
+        setCourses(allCourses);
+      } catch (error) {
+        console.error('Error fetching courses:', error);
+        Alert.alert('Error', 'Failed to load courses. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCourses();
+  }, [user?.id]);
 
   // Filter courses based on active tab and search query
   useEffect(() => {
     let filtered = courses.filter(course => {
       const matchesTab = activeTab === 'myCourses' ? course.isEnrolled : !course.isEnrolled;
-      const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const matchesSearch = course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           course.instructor.toLowerCase().includes(searchQuery.toLowerCase());
+                           course.instructorName.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesTab && matchesSearch;
     });
     
     setFilteredCourses(filtered);
   }, [courses, activeTab, searchQuery]);
 
-  const handleEnrollToggle = (courseId: string) => {
-    setCourses(prevCourses => 
-      prevCourses.map(course => 
-        course.id === courseId 
-          ? { ...course, isEnrolled: !course.isEnrolled }
-          : course
-      )
-    );
+  const handleEnrollToggle = async (courseId: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'Please log in to manage enrollments.');
+      return;
+    }
+
+    try {
+      const course = courses.find(c => c.id === courseId);
+      if (!course) return;
+
+      if (course.isEnrolled) {
+        // Unenroll from course
+        await CourseService.dropCourse(courseId);
+        Alert.alert('Success', 'Successfully unenrolled from course.');
+      } else {
+        // Enroll in course
+        await CourseService.enrollInCourse(courseId);
+        Alert.alert('Success', 'Successfully enrolled in course.');
+      }
+
+      // Update local state
+      setCourses(prevCourses => 
+        prevCourses.map(c => 
+          c.id === courseId 
+            ? { ...c, isEnrolled: !c.isEnrolled }
+            : c
+        )
+      );
+    } catch (error) {
+      console.error('Error toggling enrollment:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update enrollment.');
+    }
   };
 
   const getMyCoursesCount = () => courses.filter(course => course.isEnrolled).length;
   const getAvailableCount = () => courses.filter(course => !course.isEnrolled).length;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: colors.text }]}>Loading courses...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -247,21 +280,21 @@ export default function CoursesScreen() {
                 <View style={styles.courseHeader}>
                   <View style={styles.courseInfo}>
                     <Text style={[styles.courseTitle, { color: colors.text }]}>
-                      {course.title}
+                      {course.name}
                     </Text>
                     <Text style={[styles.courseDetails, { color: colors.textSecondary }]}>
-                      {course.code} • {course.instructor}
+                      {course.code} • {course.instructorName}
                     </Text>
                   </View>
                   <View style={[styles.creditsBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.creditsNumber}>{course.credits}</Text>
+                    <Text style={styles.creditsNumber}>{course.credits || 3}</Text>
                     <Text style={styles.creditsLabel}>Credits</Text>
                   </View>
                 </View>
 
                 {/* Course Description */}
                 <Text style={[styles.courseDescription, { color: colors.textSecondary }]}>
-                  {course.description}
+                  {course.description || 'No description available'}
                 </Text>
 
                 {/* Course Stats and Action */}
@@ -270,13 +303,13 @@ export default function CoursesScreen() {
                     <View style={styles.statItem}>
                       <MaterialCommunityIcons name="account-group" size={16} color={colors.textSecondary} />
                       <Text style={[styles.statText, { color: colors.textSecondary }]}>
-                        {course.enrollment}
+                        {course.enrollment || 0}
                       </Text>
                     </View>
                     <View style={styles.statItem}>
                       <Ionicons name="star" size={16} color="#F59E0B" />
                       <Text style={[styles.statText, { color: colors.textSecondary }]}>
-                        {course.rating}
+                        {course.rating || 0}
                       </Text>
                     </View>
                   </View>
@@ -473,5 +506,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 

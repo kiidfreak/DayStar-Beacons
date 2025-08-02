@@ -52,10 +52,18 @@ export class CourseService {
       // Get course IDs
       const courseIds = enrollments.map(e => e.course_id);
       
-      // Fetch courses with simple query
+      // Fetch courses with instructor information
       const { data: courses, error: coursesError } = await supabase
         .from('courses')
-        .select('*')
+        .select(`
+          *,
+          instructor:users!courses_instructor_id_fkey(
+            id,
+            full_name,
+            email,
+            role
+          )
+        `)
         .in('id', courseIds);
 
       if (coursesError) {
@@ -70,26 +78,28 @@ export class CourseService {
         code: course.code,
         name: course.name,
         instructorId: course.instructor_id,
-        instructor: undefined,
-        instructorName: 'Unknown Instructor',
-        location: undefined,
-        schedule: undefined,
-        schoolId: 'daystar-university', // Default school ID
+        instructor: course.instructor,
+        instructorName: course.instructor?.full_name || 'Unknown Instructor',
+        location: course.location,
+        schedule: course.schedule,
+        schoolId: course.school_id || 'daystar-university',
         school: undefined,
-        department: undefined,
-        semester: undefined,
-        academicYear: undefined,
-        maxStudents: 50, // Default value
-        beaconId: undefined,
+        department: course.department,
+        semester: course.semester,
+        academicYear: course.academic_year,
+        maxStudents: course.max_students || 50,
+        credits: course.credits || 3,
+        beaconId: course.beacon_id,
         beacon: undefined,
-        approvalRequired: false, // Default value
-        room: undefined,
-        beaconMacAddress: undefined,
-        startTime: undefined,
-        endTime: undefined,
-        days: undefined,
+        approvalRequired: course.approval_required || false,
+        room: course.room,
+        beaconMacAddress: course.beacon_mac_address,
+        startTime: course.start_time,
+        endTime: course.end_time,
+        days: course.days,
+        description: course.description,
         createdAt: course.created_at,
-        updatedAt: course.created_at,
+        updatedAt: course.updated_at,
       } as Course)) || [];
     } catch (error) {
       console.error('Error fetching student courses:', error);
@@ -159,6 +169,7 @@ export class CourseService {
         instructorName: course.instructor?.full_name || 'Unknown Instructor',
         schoolId: course.school_id || schoolId || 'daystar-university',
         maxStudents: course.max_students || 50,
+        credits: course.credits || 3,
         approvalRequired: course.approval_required || false,
         createdAt: course.created_at,
         updatedAt: course.updated_at,
@@ -213,25 +224,29 @@ export class CourseService {
         id: data.id,
         code: data.code,
         name: data.name,
-        description: undefined,
+        description: data.description,
         instructorId: data.instructor_id,
         instructor: data.instructor,
         instructorName: data.instructor?.full_name || 'Unknown Instructor',
-        location: undefined,
-        schedule: undefined,
-        schoolId: 'daystar-university', // Default school ID
-        school: undefined,
-        department: undefined,
-        semester: undefined,
-        academicYear: undefined,
-        maxStudents: 50, // Default value
-        beaconId: undefined,
-        beacon: undefined,
-        approvalRequired: false, // Default value
-        room: undefined,
-        beaconMacAddress: undefined,
+        location: data.location,
+        schedule: data.schedule,
+        schoolId: data.school_id || 'daystar-university',
+        school: data.school,
+        department: data.department,
+        semester: data.semester,
+        academicYear: data.academic_year,
+        maxStudents: data.max_students || 50,
+        credits: data.credits || 3,
+        beaconId: data.beacon_id,
+        beacon: data.beacon,
+        approvalRequired: data.approval_required || false,
+        room: data.room,
+        beaconMacAddress: data.beacon_mac_address,
+        startTime: data.start_time,
+        endTime: data.end_time,
+        days: data.days,
         createdAt: data.created_at,
-        updatedAt: data.created_at,
+        updatedAt: data.updated_at,
       } as Course;
     } catch (error) {
       console.error('Error fetching course details:', error);

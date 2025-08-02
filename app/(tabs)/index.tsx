@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useAttendanceStore } from '@/store/attendanceStore';
@@ -10,14 +10,37 @@ import { AttendanceStats } from '@/components/AttendanceStats';
 import { useBeacon } from '@/hooks/useBeacon';
 import { AttendanceService } from '@/services/attendanceService';
 import { ClassSession } from '@/types';
+import Toast from 'react-native-toast-message';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
   const { themeColors } = useThemeStore();
-  const { fetchAttendanceRecords, attendanceRecords, markAttendance, isLoading } = useAttendanceStore();
-  const { isScanning, currentSession, attendanceMarked, isConnected } = useBeacon();
+  const { 
+    attendanceRecords, 
+    isLoading, 
+    error, 
+    bannerMessage, 
+    fetchAttendanceRecords, 
+    markAttendance,
+    markCheckout,
+    setBannerMessage 
+  } = useAttendanceStore();
+  
+  // BLE functionality - background scanning and automatic attendance
+  const { 
+    isScanning, 
+    currentSession, 
+    attendanceMarked, 
+    isConnected,
+    startContinuousScanning,
+    stopContinuousScanning,
+    requestBluetoothPermissions,
+    automaticAttendanceEnabled,
+    setAutomaticAttendanceEnabled
+  } = useBeacon();
+  
   const router = useRouter();
   
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -25,6 +48,7 @@ export default function HomeScreen() {
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [todaysSessions, setTodaysSessions] = useState<ClassSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [pendingCheckout, setPendingCheckout] = useState(false);
 
   console.log('HomeScreen: Rendering with user:', user?.id);
 
@@ -76,6 +100,14 @@ export default function HomeScreen() {
     }
   };
 
+  // Initialize BLE background scanning when user is authenticated
+  useEffect(() => {
+    if (user) {
+      console.log('HomeScreen: User authenticated, BLE background scanning will start automatically');
+      // The useBeacon hook handles all BLE initialization automatically
+    }
+  }, [user]);
+
   useEffect(() => {
     console.log('HomeScreen: useEffect triggered with user:', user?.id);
     if (user) {
@@ -99,6 +131,14 @@ export default function HomeScreen() {
       refreshData();
     }
   }, [user]);
+
+  // Cleanup BLE scanning when component unmounts
+  useEffect(() => {
+    return () => {
+      console.log('HomeScreen: Cleaning up BLE scanning');
+      stopContinuousScanning();
+    };
+  }, [stopContinuousScanning]);
 
   const getCurrentDate = () => {
     const now = new Date();
@@ -131,28 +171,110 @@ export default function HomeScreen() {
     setExpandedCard(expandedCard === index ? null : index);
   };
 
+  // Handle attendance marking
+  const handleMarkAttendance = async (sessionId: string, action: 'checkIn' | 'checkOut' | 'scanQR') => {
+    if (!user) {
+      console.log('No user found, cannot mark attendance');
+      return;
+    }
+    
+    try {
+      let method: 'qr' | 'beacon' | 'manual';
+      
+      switch (action) {
+        case 'checkIn':
+          method = 'manual';
+          console.log('Checking in for session:', sessionId);
+          const checkInSuccess = await markAttendance(sessionId, method);
+          if (checkInSuccess) {
+            console.log('✅ Check-in successful');
+          }
+          break;
+        case 'checkOut':
+          // Use BeaconStatus checkout implementation
+          Alert.alert(
+            'Check Out',
+            'Are you sure you want to check out and log your attendance sign out time?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Check Out', 
+                style: 'destructive', 
+                onPress: () => {
+                  setPendingCheckout(true);
+                  // Store sessionId for checkout
+                  setCurrentCheckoutSession(sessionId);
+                }
+              },
+            ]
+          );
+          break;
+        case 'scanQR':
+          // Navigate to QR scanner instead of marking attendance directly
+          console.log('Opening QR scanner for session:', sessionId);
+          router.push('/qr-scanner');
+          break;
+      }
+    } catch (error) {
+      console.error('Error marking attendance:', error);
+    }
+  };
+
+  // State for current checkout session
+  const [currentCheckoutSession, setCurrentCheckoutSession] = useState<string | null>(null);
+
+  // Run async checkout after confirmation
+  React.useEffect(() => {
+    const doCheckout = async () => {
+      if (!pendingCheckout || !currentCheckoutSession || !user) return;
+      
+      try {
+        console.log('Processing checkout for session:', currentCheckoutSession);
+        await AttendanceService.recordCheckout(currentCheckoutSession, user.id);
+        
+        // Refresh attendance records to update UI
+        await fetchAttendanceRecords();
+        
+        Toast.show({
+          type: 'success',
+          text1: 'Checked out successfully!',
+          visibilityTime: 3000,
+        });
+      } catch (e) {
+        let errorMsg = 'An error occurred while checking out.';
+        if (e && typeof e === 'object' && 'message' in e && typeof (e as any).message === 'string') {
+          errorMsg = (e as any).message;
+        }
+        console.error('Checkout error:', e);
+        Toast.show({
+          type: 'error',
+          text1: 'Checkout failed',
+          text2: errorMsg,
+          visibilityTime: 4000,
+        });
+      } finally {
+        setPendingCheckout(false);
+        setCurrentCheckoutSession(null);
+      }
+    };
+    
+    doCheckout();
+  }, [pendingCheckout, currentCheckoutSession, user, fetchAttendanceRecords]);
+
   // Check if attendance is marked for a session
   const isAttendanceMarked = (sessionId: string) => {
     return attendanceRecords.some(record => record.session_id === sessionId);
   };
 
+  // Check if checkout is marked for a session
+  const isCheckoutMarked = (sessionId: string) => {
+    const record = attendanceRecords.find(record => record.session_id === sessionId);
+    return record?.check_out_time ? true : false;
+  };
+
   // Get attendance record for a session
   const getAttendanceRecord = (sessionId: string) => {
     return attendanceRecords.find(record => record.session_id === sessionId);
-  };
-
-  // Handle attendance marking
-  const handleMarkAttendance = async (sessionId: string, method: 'qr' | 'beacon' | 'manual') => {
-    if (!user) return;
-    
-    try {
-      const success = await markAttendance(sessionId, method);
-      if (success) {
-        console.log('Attendance marked successfully');
-      }
-    } catch (error) {
-      console.error('Error marking attendance:', error);
-    }
   };
 
   // Format time for display
@@ -262,21 +384,22 @@ export default function HomeScreen() {
           ) : (
             todaysSessions.map((session, index) => {
               const isMarked = isAttendanceMarked(session.id);
-              const attendanceRecord = getAttendanceRecord(session.id);
-              const statusColor = getAttendanceStatusColor(session.id);
-              const statusText = getAttendanceStatusText(session.id);
+              const hasCheckedOut = isCheckoutMarked(session.id);
               
               return (
                 <View key={session.id} style={[styles.classCard, { backgroundColor: colors.card }]}>
-                  <TouchableOpacity 
-                    style={styles.classHeader}
-                    onPress={() => toggleCardExpansion(index)}
-                    activeOpacity={0.7}
-                  >
+                  {/* Course Header */}
+                  <View style={styles.classHeader}>
                     <View style={styles.classInfo}>
                       <Text style={[styles.classTitle, { color: colors.text }]}>
                         {session.course?.name || 'Unknown Course'}
                       </Text>
+                      {/* Attendance Status Indicator */}
+                      {isMarked && (
+                        <View style={[styles.attendanceStatus, { backgroundColor: colors.success }]}>
+                          <Text style={styles.attendanceStatusText}>✓ Present</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.classHeaderRight}>
                       <View style={[styles.classCode, { backgroundColor: colors.primary }]}>
@@ -284,95 +407,115 @@ export default function HomeScreen() {
                           {session.course?.code || 'N/A'}
                         </Text>
                       </View>
-                      {isMarked && (
-                        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                          <Text style={styles.statusText}>{statusText}</Text>
-                        </View>
-                      )}
                       <Ionicons 
-                        name={expandedCard === index ? "chevron-up" : "chevron-down"} 
+                        name="chevron-up" 
                         size={20} 
                         color={colors.textSecondary} 
                       />
                     </View>
-                  </TouchableOpacity>
+                  </View>
                   
+                  {/* Session Details */}
                   <View style={styles.classDetails}>
                     <View style={styles.detailRow}>
                       <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-                      <Text style={[styles.detailText, { color: colors.text }]}>
+                      <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                         {formatSessionTime(session.startTime, session.endTime)}
                       </Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                      <Text style={[styles.detailText, { color: colors.text }]}>
+                      <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                         {session.location || 'Location TBD'}
                       </Text>
                     </View>
-                    {expandedCard === index && (
-                      <>
-                        <View style={styles.detailRow}>
-                          <Ionicons name="person-outline" size={16} color={colors.textSecondary} />
-                          <Text style={[styles.detailText, { color: colors.text }]}>
-                            Lecturer: {session.course?.instructor?.name || 'TBD'}
-                          </Text>
-                        </View>
-                        <View style={styles.detailRow}>
-                          <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-                          <Text style={[styles.detailText, { color: colors.text }]}>
-                            Date: {new Date(session.sessionDate).toLocaleDateString()}
-                          </Text>
-                        </View>
-                        
-                        {attendanceRecord && (
-                          <View style={styles.detailRow}>
-                            <Ionicons name="checkmark-circle-outline" size={16} color={colors.textSecondary} />
-                            <Text style={[styles.detailText, { color: colors.text }]}>
-                              Check-in: {formatTime(attendanceRecord.check_in_time)}
-                            </Text>
-                          </View>
-                        )}
-                        
-                        {/* Action Buttons */}
-                        <View style={styles.actionButtons}>
-                          {!isMarked ? (
-                            <>
-                              <TouchableOpacity 
-                                style={[styles.actionButton, { borderColor: colors.border }]}
-                                onPress={() => handleMarkAttendance(session.id, 'qr')}
-                                disabled={isLoading}
-                              >
-                                <MaterialCommunityIcons name="qrcode-scan" size={16} color={colors.textSecondary} />
-                                <Text style={[styles.actionButtonText, { color: colors.text }]}>Scan QR</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity 
-                                style={[styles.actionButton, { borderColor: colors.border }]}
-                                onPress={() => handleMarkAttendance(session.id, 'beacon')}
-                                disabled={isLoading}
-                              >
-                                <MaterialCommunityIcons name="bluetooth" size={16} color={colors.textSecondary} />
-                                <Text style={[styles.actionButtonText, { color: colors.text }]}>Beacon</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity 
-                                style={[styles.actionButton, { borderColor: colors.border }]}
-                                onPress={() => handleMarkAttendance(session.id, 'manual')}
-                                disabled={isLoading}
-                              >
-                                <Text style={[styles.actionButtonText, { color: colors.text }]}>Manual</Text>
-                              </TouchableOpacity>
-                            </>
-                          ) : (
-                            <View style={[styles.attendanceMarkedContainer, { backgroundColor: colors.highlight }]}>
-                              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                              <Text style={[styles.attendanceMarkedText, { color: colors.success }]}>
-                                Attendance Marked
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </>
-                    )}
+                    
+                    {/* Divider */}
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    
+                    {/* Lecturer and Day */}
+                    <View style={styles.detailRow}>
+                      <Text style={[styles.detailText, { color: colors.text }]}>
+                        Lecturer: {session.course?.instructor?.name || 'TBD'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={[styles.detailText, { color: colors.text }]}>
+                        Day: {new Date(session.sessionDate).toLocaleDateString('en-US', { weekday: 'long' })}
+                      </Text>
+                    </View>
+                    
+                    {/* Divider */}
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    
+                    {/* Action Buttons */}
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity 
+                        style={[
+                          styles.actionButton, 
+                          { 
+                            borderColor: colors.border,
+                            opacity: isMarked ? 0.5 : 1
+                          }
+                        ]}
+                        onPress={() => handleMarkAttendance(session.id, 'checkIn')}
+                        disabled={isLoading || isMarked}
+                      >
+                        <Text style={[
+                          styles.actionButtonText, 
+                          { 
+                            color: isMarked ? colors.textSecondary : colors.text 
+                          }
+                        ]}>
+                          {isMarked ? 'Checked In' : 'Check In'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[
+                          styles.actionButton, 
+                          { 
+                            borderColor: colors.border,
+                            opacity: hasCheckedOut ? 0.5 : 1
+                          }
+                        ]}
+                        onPress={() => handleMarkAttendance(session.id, 'checkOut')}
+                        disabled={isLoading || !isMarked || hasCheckedOut}
+                      >
+                        <Text style={[
+                          styles.actionButtonText, 
+                          { 
+                            color: hasCheckedOut ? colors.textSecondary : (!isMarked ? colors.textSecondary : colors.text)
+                          }
+                        ]}>
+                          {hasCheckedOut ? 'Checked Out' : 'Check Out'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[
+                          styles.actionButton, 
+                          { 
+                            borderColor: colors.border,
+                            opacity: isMarked ? 0.5 : 1
+                          }
+                        ]}
+                        onPress={() => handleMarkAttendance(session.id, 'scanQR')}
+                        disabled={isLoading || isMarked}
+                      >
+                        <MaterialCommunityIcons 
+                          name="qrcode-scan" 
+                          size={16} 
+                          color={isMarked ? colors.textSecondary : colors.text} 
+                        />
+                        <Text style={[
+                          styles.actionButtonText, 
+                          { 
+                            color: isMarked ? colors.textSecondary : colors.text 
+                          }
+                        ]}>
+                          Scan QR
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               );
@@ -380,6 +523,9 @@ export default function HomeScreen() {
           )}
         </Animated.View>
       </ScrollView>
+      
+      {/* Toast notifications */}
+      <Toast />
     </View>
   );
 }
@@ -471,6 +617,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
   },
+  divider: {
+    height: 1,
+    marginVertical: 8,
+  },
   actionButtons: {
     flexDirection: 'row',
     gap: 8,
@@ -530,6 +680,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   attendanceMarkedText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  attendanceStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attendanceStatusText: {
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
   },

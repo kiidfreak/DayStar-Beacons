@@ -67,6 +67,7 @@ export interface Course {
   semester?: string;
   academicYear?: string;
   maxStudents: number;
+  credits?: number; // Number of credit hours for the course
   beaconId?: string;
   beacon?: BLEBeacon;
   approvalRequired: boolean;

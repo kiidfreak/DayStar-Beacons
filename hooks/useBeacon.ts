@@ -137,6 +137,12 @@ export const useBeacon = () => {
       }
 
       console.log('🤖 Automatic attendance check for beacon:', beaconId);
+      console.log('🤖 Presence data:', {
+        isPresent: presence.isPresent,
+        waitTimeElapsed: presence.waitTimeElapsed,
+        attendanceMarked: presence.attendanceMarked,
+        sessionId: presence.sessionId
+      });
       
       // Mark attendance asynchronously
       (async () => {
@@ -153,6 +159,8 @@ export const useBeacon = () => {
             return;
           }
 
+          console.log('🤖 Marking attendance for session:', presence.sessionId);
+          
           // Mark attendance silently
           const success = await markAttendance(presence.sessionId, 'beacon');
           
@@ -181,6 +189,8 @@ export const useBeacon = () => {
               text2: 'You have been automatically checked in',
               visibilityTime: 3000,
             });
+          } else {
+            console.log('⚠️ Automatic attendance marking returned false');
           }
         } catch (error) {
           console.error('❌ Error in automatic attendance marking:', error);
@@ -707,7 +717,34 @@ export const useBeacon = () => {
         clearInterval(sessionCheckIntervalRef.current);
       }
     };
-  }, [user, isScanning, registeredBeaconMacs]);
+  }, [user, isScanning, registeredBeaconMacs, startContinuousScanning]);
+
+  // Auto-start scanning when user is authenticated (even without MACs loaded yet)
+  useEffect(() => {
+    if (user && !isScanning) {
+      console.log('🔧 User authenticated, preparing for automatic BLE scanning');
+      
+      // Request permissions automatically
+      const autoInitialize = async () => {
+        try {
+          await requestBluetoothPermissions();
+          console.log('🔧 BLE permissions granted, ready for background scanning');
+        } catch (error) {
+          console.log('🔧 BLE permissions not granted, but continuing with background setup');
+        }
+      };
+      
+      autoInitialize();
+    }
+  }, [user, isScanning, requestBluetoothPermissions]);
+
+  // Auto-start scanning when MACs are loaded
+  useEffect(() => {
+    if (user && !isScanning && registeredBeaconMacs.size > 0) {
+      console.log('🔧 MACs loaded, starting background BLE scanning');
+      startContinuousScanning();
+    }
+  }, [user, isScanning, registeredBeaconMacs, startContinuousScanning]);
 
   // Stop continuous scanning
   const stopContinuousScanning = useCallback(() => {

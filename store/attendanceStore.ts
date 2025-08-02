@@ -20,6 +20,7 @@ interface AttendanceState {
   // Actions
   fetchAttendanceRecords: () => Promise<void>;
   markAttendance: (sessionId: string, method: string) => Promise<boolean>;
+  markCheckout: (sessionId: string, method: string) => Promise<boolean>;
   setBannerMessage: (message: string | null) => void;
   clearBannerMessage: () => void;
   setBeaconStatus: (status: 'scanning' | 'detected' | 'connected' | 'error' | 'inactive') => void;
@@ -177,45 +178,150 @@ export const useAttendanceStore = create<AttendanceState>()(
                 .single();
 
               if (attendanceError) {
-                throw new Error('Failed to record attendance');
+                console.error('❌ Error inserting attendance record:', attendanceError);
+                // Remove optimistic record on error
+                set(state => ({
+                  attendanceRecords: state.attendanceRecords.filter(r => r.id !== optimisticRecord.id),
+                  bannerMessage: 'Failed to mark attendance. Please try again.',
+                  isLoading: false
+                }));
+                return;
               }
 
+              console.log('✅ Attendance record created successfully:', attendanceData);
+              
               // Update the optimistic record with real data
               set(state => ({
-                attendanceRecords: state.attendanceRecords.map(record => 
-                  record.id === optimisticRecord.id ? attendanceData : record
+                attendanceRecords: state.attendanceRecords.map(r => 
+                  r.id === optimisticRecord.id ? { ...r, ...attendanceData } : r
                 ),
-                currentSession: {
-                  id: sessionId,
-                  course_id: sessionData.course_id,
-                  course_code: courseObj.code,
-                  course_name: courseObj.name,
-                  start_time: new Date().toISOString(),
-                  end_time: new Date().toISOString(),
-                  is_active: true,
-                }
+                isLoading: false
               }));
 
-              console.log('✅ Background attendance recording completed');
-            } catch (backgroundError) {
-              console.error('❌ Background error:', backgroundError);
-              
-              // Revert optimistic update on error
+            } catch (error) {
+              console.error('❌ Error in background attendance marking:', error);
+              // Remove optimistic record on error
               set(state => ({
-                attendanceRecords: state.attendanceRecords.filter(record => record.id !== optimisticRecord.id),
-                bannerMessage: 'Failed to mark attendance - please try again',
-                error: backgroundError instanceof Error ? backgroundError.message : 'Unknown error'
+                attendanceRecords: state.attendanceRecords.filter(r => r.id !== optimisticRecord.id),
+                bannerMessage: 'Failed to mark attendance. Please try again.',
+                isLoading: false
               }));
             }
-          }, 0); // Execute in next tick
+          }, 100);
 
           return true;
+
         } catch (error) {
-          console.error('❌ Error in markAttendance:', error);
+          console.error('❌ Error marking attendance:', error);
           set({ 
-            bannerMessage: 'Failed to mark attendance',
-            isLoading: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: 'Failed to mark attendance',
+            bannerMessage: 'Failed to mark attendance. Please try again.',
+            isLoading: false 
+          });
+          return false;
+        }
+      },
+
+      // Mark checkout for existing attendance record
+      markCheckout: async (sessionId: string, method: string) => {
+        console.log('📝 markCheckout called with sessionId:', sessionId, 'method:', method);
+        
+        const { user } = useAuthStore.getState();
+        if (!user) {
+          console.log('❌ No user found, cannot mark checkout');
+          return false;
+        }
+
+        // Set loading state immediately for better UX
+        set({ isLoading: true, error: null });
+
+        try {
+          // Check if attendance record exists for this session
+          const state = get();
+          const existingRecord = state.attendanceRecords.find(
+            record => record.session_id === sessionId
+          );
+
+          if (!existingRecord) {
+            console.log('⚠️ No attendance record found for this session');
+            set({ 
+              bannerMessage: 'No attendance record found. Please check in first.',
+              isLoading: false 
+            });
+            return false;
+          }
+
+          if (existingRecord.check_out_time) {
+            console.log('⚠️ Already checked out for this session');
+            set({ 
+              bannerMessage: 'Already checked out for this session',
+              isLoading: false 
+            });
+            return false;
+          }
+
+          // Optimistic UI update
+          const checkoutTime = new Date().toISOString();
+          set(state => ({
+            attendanceRecords: state.attendanceRecords.map(record => 
+              record.session_id === sessionId 
+                ? { ...record, check_out_time: checkoutTime }
+                : record
+            ),
+            bannerMessage: 'Checkout marked successfully!',
+            isLoading: false
+          }));
+
+          // Perform background checkout operation
+          setTimeout(async () => {
+            try {
+              // Update the attendance record with checkout time
+              const { error: checkoutError } = await supabase
+                .from('attendance_records')
+                .update({ check_out_time: checkoutTime })
+                .eq('session_id', sessionId)
+                .eq('student_id', user.id);
+
+              if (checkoutError) {
+                console.error('❌ Error updating checkout time:', checkoutError);
+                // Revert optimistic update on error
+                set(state => ({
+                  attendanceRecords: state.attendanceRecords.map(record => 
+                    record.session_id === sessionId 
+                      ? { ...record, check_out_time: undefined }
+                      : record
+                  ),
+                  bannerMessage: 'Failed to mark checkout. Please try again.',
+                  isLoading: false
+                }));
+                return;
+              }
+
+              console.log('✅ Checkout marked successfully');
+
+            } catch (error) {
+              console.error('❌ Error in background checkout marking:', error);
+              // Revert optimistic update on error
+              set(state => ({
+                attendanceRecords: state.attendanceRecords.map(record => 
+                  record.session_id === sessionId 
+                    ? { ...record, check_out_time: undefined }
+                    : record
+                ),
+                bannerMessage: 'Failed to mark checkout. Please try again.',
+                isLoading: false
+              }));
+            }
+          }, 100);
+
+          return true;
+
+        } catch (error) {
+          console.error('❌ Error marking checkout:', error);
+          set({ 
+            error: 'Failed to mark checkout',
+            bannerMessage: 'Failed to mark checkout. Please try again.',
+            isLoading: false 
           });
           return false;
         }
