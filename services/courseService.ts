@@ -286,23 +286,13 @@ export class CourseService {
       // Map to ClassSession type
       return sessions?.map((session: any) => ({
         id: session.id,
-        courseId: session.course_id,
-        course: session.course,
-        instructorId: session.course?.instructor_id,
-        instructor: session.course?.instructor,
-        sessionDate: session.session_date,
-        startTime: session.start_time,
-        endTime: session.end_time,
-        location: session.location,
-        qrCodeActive: false, // Default value
-        qrCodeExpiresAt: undefined,
-        beaconEnabled: !!session.beacon_id, // True if beacon assigned
-        beaconId: session.beacon_id,
-        beacon: session.beacon,
-        attendanceWindowStart: session.attendance_window_start,
-        attendanceWindowEnd: session.attendance_window_end,
-        sessionType: 'regular', // Default value
-        createdAt: session.created_at,
+        course_id: session.course_id,
+        course_name: session.course?.name || '',
+        start_time: session.start_time,
+        end_time: session.end_time,
+        is_active: session.is_active || true,
+        beacon_id: session.beacon_id,
+        beacon_mac_address: session.beacon_mac_address,
       })) || [];
     } catch (error) {
       console.error('Error fetching sessions for date:', error);
@@ -340,23 +330,13 @@ export class CourseService {
       // Map to ClassSession type
       return sessions?.map((session: any) => ({
         id: session.id,
-        courseId: session.course_id,
-        course: session.course,
-        instructorId: session.course?.instructor_id,
-        instructor: session.course?.instructor,
-        sessionDate: session.session_date,
-        startTime: session.start_time,
-        endTime: session.end_time,
-        location: session.location,
-        qrCodeActive: false, // Default value
-        qrCodeExpiresAt: undefined,
-        beaconEnabled: !!session.beacon_id, // True if beacon assigned
-        beaconId: session.beacon_id,
-        beacon: session.beacon,
-        attendanceWindowStart: session.attendance_window_start,
-        attendanceWindowEnd: session.attendance_window_end,
-        sessionType: 'regular', // Default value
-        createdAt: session.created_at,
+        course_id: session.course_id,
+        course_name: session.course?.name || '',
+        start_time: session.start_time,
+        end_time: session.end_time,
+        is_active: session.is_active || true,
+        beacon_id: session.beacon_id,
+        beacon_mac_address: session.beacon_mac_address,
       })) || [];
     } catch (error) {
       console.error('Error fetching all sessions for student:', error);
@@ -471,231 +451,5 @@ export class CourseService {
     }
   }
 
-  // Fetch all available courses
-  static async fetchCourses(): Promise<Course[]> {
-    try {
-      const { data, error } = await supabase
-        .from('courses')
-        .select(`
-          id,
-          name,
-          code,
-          credits,
-          instructor_id,
-          users!inner(firstName, lastName),
-          semester,
-          academic_year,
-          created_at
-        `)
-        .eq('is_active', true)
-        .order('name');
 
-      if (error) {
-        console.error('Error fetching courses:', error);
-        throw new Error(error.message);
-      }
-
-      return data?.map(course => ({
-        ...course,
-        instructor_name: `${course.users.firstName} ${course.users.lastName}`,
-      })) || [];
-    } catch (error) {
-      console.error('Error in fetchCourses:', error);
-      throw error;
-    }
-  }
-
-  // Fetch enrolled courses for a student
-  static async fetchEnrolledCourses(studentId: string): Promise<Enrollment[]> {
-    try {
-      const { data, error } = await supabase
-        .from('student_course_enrollments')
-        .select(`
-          id,
-          student_id,
-          course_id,
-          status,
-          enrollment_date,
-          courses!inner(
-            id,
-            name,
-            code,
-            credits,
-            instructor_id,
-            users!courses_instructor_id_fkey(full_name, email),
-            semester,
-            academic_year,
-            created_at
-          )
-        `)
-        .eq('student_id', studentId)
-        .order('enrollment_date', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching enrolled courses:', error);
-        throw new Error(error.message);
-      }
-
-      return data?.map(enrollment => ({
-        ...enrollment,
-        course: {
-          ...enrollment.courses,
-          instructor_name: enrollment.courses.users && enrollment.courses.users[0] ? enrollment.courses.users[0].full_name : '',
-          instructor_email: enrollment.courses.users && enrollment.courses.users[0] ? enrollment.courses.users[0].email || '' : '',
-        },
-      })) || [];
-    } catch (error) {
-      console.error('Error in fetchEnrolledCourses:', error);
-      throw error;
-    }
-  }
-
-  // Enroll in a course
-  static async enrollInCourse(courseId: string): Promise<boolean> {
-    try {
-      const { user } = useAuthStore.getState();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      // Check if already enrolled
-      const { data: existingEnrollment } = await supabase
-        .from('student_course_enrollments')
-        .select('id')
-        .eq('student_id', user.id)
-        .eq('course_id', courseId)
-        .single();
-
-      if (existingEnrollment) {
-        throw new Error('Already enrolled in this course');
-      }
-
-      // Create enrollment
-      const enrollmentObj2 = {
-        student_id: user.id,
-        course_id: courseId,
-        status: 'active',
-        enrollment_date: new Date().toISOString(),
-      };
-      console.log('Inserting into student_course_enrollments:', enrollmentObj2);
-      const { error } = await supabase
-        .from('student_course_enrollments')
-        .insert(enrollmentObj2);
-
-      if (error) {
-        console.error('Error enrolling in course:', error);
-        throw new Error(error.message);
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in enrollInCourse:', error);
-      throw error;
-    }
-  }
-
-  // Drop a course
-  static async dropCourse(courseId: string): Promise<boolean> {
-    try {
-      const { user } = useAuthStore.getState();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      const { error } = await supabase
-        .from('student_course_enrollments')
-        .update({ status: 'dropped' })
-        .eq('student_id', user.id)
-        .eq('course_id', courseId);
-
-      if (error) {
-        console.error('Error dropping course:', error);
-        throw new Error(error.message);
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in dropCourse:', error);
-      throw error;
-    }
-  }
-
-  // Fetch class sessions for a course
-  static async fetchClassSessions(courseId: string): Promise<ClassSession[]> {
-    try {
-      const { data, error } = await supabase
-        .from('class_sessions')
-        .select(`
-          id,
-          course_id,
-          start_time,
-          end_time,
-          is_active,
-          beacon_id,
-          beacon_mac_address,
-          courses!inner(name)
-        `)
-        .eq('course_id', courseId)
-        .order('start_time', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching class sessions:', error);
-        throw new Error(error.message);
-      }
-
-      return data?.map(session => ({
-        ...session,
-        course_name: session.courses.name,
-      })) || [];
-    } catch (error) {
-      console.error('Error in fetchClassSessions:', error);
-      throw error;
-    }
-  }
-
-  // Get enrollment status for a course
-  static async getEnrollmentStatus(courseId: string): Promise<'enrolled' | 'pending' | 'dropped' | 'not-enrolled'> {
-    try {
-      const { user } = useAuthStore.getState();
-      if (!user) {
-        return 'not-enrolled';
-      }
-
-      const { data, error } = await supabase
-        .from('student_course_enrollments')
-        .select('status')
-        .eq('student_id', user.id)
-        .eq('course_id', courseId)
-        .single();
-
-      if (error || !data) {
-        return 'not-enrolled';
-      }
-
-      return data.status;
-    } catch (error) {
-      console.error('Error in getEnrollmentStatus:', error);
-      return 'not-enrolled';
-    }
-  }
-
-  // Debug method to test enrollment
-  static async debugEnrollmentStatus(courseId: string): Promise<any> {
-    try {
-      const { user } = useAuthStore.getState();
-      if (!user) {
-        return { error: 'No user' };
-      }
-
-      const { data, error } = await supabase
-        .from('student_course_enrollments')
-        .select('*')
-        .eq('student_id', user.id)
-        .eq('course_id', courseId);
-
-      return { data, error };
-    } catch (error) {
-      return { error: error.message };
-    }
-  }
 } 
